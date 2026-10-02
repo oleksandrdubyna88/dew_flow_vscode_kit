@@ -47,6 +47,8 @@ export class FakeConfiguration implements ConfigurationPort {
   /** `'all'`, one setting's key, or nothing — which writes {@link write} keeps pending. */
   private holding: 'all' | string | undefined = undefined;
   private nextFailure: Failure | undefined = undefined;
+  /** Settings whose NEXT watch throws, keyed `section.key` — a registration the real API could refuse. */
+  private watchFailures: ReadonlyMap<string, Failure> = new Map();
 
   /**
    * @param known the settings this fake will answer for — anything else is refused by name
@@ -87,6 +89,11 @@ export class FakeConfiguration implements ConfigurationPort {
 
   onDidChange(setting: SettingName, listener: () => void): Disposable {
     this.expect(setting, 'watch');
+    const failure = this.watchFailures.get(settingKey(setting));
+    if (failure !== undefined) {
+      this.watchFailures = new Map([...this.watchFailures].filter(([key]) => key !== settingKey(setting)));
+      throw failure.reason;
+    }
     const entry: SettingListener = { setting: settingKey(setting), run: listener };
     this.listeners = [...this.listeners, entry];
 
@@ -114,6 +121,15 @@ export class FakeConfiguration implements ConfigurationPort {
   /** The next write rejects with `reason` and is not applied. */
   failNextWrite(reason: unknown): void {
     this.nextFailure = { reason };
+  }
+
+  /**
+   * The next `onDidChange` for `setting` throws `reason` and hooks nothing — a registration failing part
+   * way through a constructor, after an earlier one succeeded. That one call only; the next is ordinary.
+   */
+  failNextWatch(setting: SettingName, reason: unknown): void {
+    this.expect(setting, 'fail a watch of');
+    this.watchFailures = new Map([...this.watchFailures, [settingKey(setting), { reason }]]);
   }
 
   /** A change from OUTSIDE this host — the Settings UI, settings sync: stored, then every listener told. */

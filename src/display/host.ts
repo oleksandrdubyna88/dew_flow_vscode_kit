@@ -1,5 +1,6 @@
 import { settingWritten, type SettingReporter } from '../settings/settingWritten';
 import { asText } from '../text/asText';
+import { hookAll } from '../webview/hooks';
 import { WriteQueue } from '../webview/writeQueue';
 import type { DisplayConfig } from './config';
 import { textToneMessage, uiScaleMessage } from './messages';
@@ -28,6 +29,14 @@ import { clampScale } from './zoom';
  * <p><b>Growth</b> (plan §5): one write queue per setting, as long as the presses not yet written; the
  * set of attached pages, one entry per open page, each leaving on dispose, detach or a failed push.
  * `dispose()` unhooks both setting listeners and every page.</p>
+ *
+ * <p><b>Lifetime</b> (gate, epic 2 code round, findings 0, 2 and 4). The two setting listeners are made
+ * all or none (`webview/hooks.ts`): if the second registration throws, the first is unhooked before the
+ * error reaches the caller. After `dispose()`, `attach`, `press` and `apply` THROW — synchronously, the
+ * way a disposed help panel's `render` and `handle` do — and a press still queued behind a write in
+ * flight is dropped when the queue reaches it: the write already started lands, nothing after it does.
+ * A push is a detached execution, so its outermost frame catches everything — a reporter that throws, a
+ * page's dispose hook that throws — and hands it to `reporterFailed`; the push itself never rejects.</p>
  */
 
 /** The two settings the host keeps, as the consumer contributes them: `coai.uiScale`, `coai.textTone`. */
@@ -48,9 +57,10 @@ export interface PushNotDelivered {
 
 /**
  * The consumer's two funnels. Neither is the kit's policy: `settingNotSaved` is ConnectOtherAIs' `notify`
- * (a counted, suppressed notice), `pushNotDelivered` its log line. **`pushNotDelivered` must not throw** —
- * it is called at the detached edge of a push, after the page is already let go, and a reporter that
- * throws there surfaces as an unhandled rejection: loud, as a consumer's own defect should be.
+ * (a counted, suppressed notice), `pushNotDelivered` its log line. `pushNotDelivered` is called at the
+ * detached edge of a push, after the page is already let go; it should not throw, and one that does is
+ * caught there and handed to {@link DisplayHostOptions.reporterFailed} — never an unhandled rejection,
+ * never swallowed.
  */
 export interface DisplayReporter {
   /** Told once per press whose write failed, through `settingWritten`. */
@@ -64,6 +74,14 @@ export interface DisplayHostOptions {
   readonly settings: DisplaySettings;
   readonly configuration: ConfigurationPort;
   readonly reporter: DisplayReporter;
+  /**
+   * Told what threw at the detached edge of a push: the reporter's own `pushNotDelivered` (the page is
+   * detached first, as it is for a quiet reporter), or a page's dispose hook as the page was let go (that
+   * error is then what is told, in place of the notice).
+   * Defaults to `console.error` — a global every extension host has, so the kit imports nothing for it. One
+   * that throws itself is logged to `console.error` with both errors; the push still never rejects.
+   */
+  readonly reporterFailed?: (error: unknown) => void;
 }
 
 /** Both settings, clamped — what a page is rendered with when it opens. */
@@ -85,14 +103,18 @@ export interface DisplayHost {
   attach(webview: WebviewPort): Disposable;
   /**
    * Read a posted message and, when it is a press, apply it. Resolves with the reading once the write has
-   * landed or its failure has been reported — never rejects. A refused message writes nothing.
+   * landed or its failure has been reported — never rejects. A refused message writes nothing. Throws,
+   * synchronously, after {@link dispose}: a disposed host keeps no page in step.
    *
    * @param source which surface asked (`chat`, `help`) — named in the notice when the write fails
    */
   press(message: unknown, source: string): Promise<PressReading>;
-  /** Apply a press a consumer's own parser produced. Same outcome contract as {@link press}. */
+  /** Apply a press a consumer's own parser produced. Same outcome contract as {@link press}, the throw after dispose included. */
   apply(press: Press, source: string): Promise<void>;
-  /** Unhook both setting listeners and every attached page. Pending writes still land. Idempotent. */
+  /**
+   * Unhook both setting listeners and every attached page. A write already in flight still lands; a press
+   * queued behind it is dropped — not written, not reported — and its promise resolves. Idempotent.
+   */
   dispose(): void;
 }
 
@@ -112,10 +134,10 @@ class Host implements DisplayHost {
   constructor(private readonly options: DisplayHostOptions) {
     const { configuration, settings } = options;
     this.config = options.config;
-    this.hooks = [
-      configuration.onDidChange(settings.uiScale, () => { this.push('uiScale'); }),
-      configuration.onDidChange(settings.textTone, () => { this.push('textTone'); }),
-    ];
+    this.hooks = hookAll([
+      () => configuration.onDidChange(settings.uiScale, () => { this.push('uiScale'); }),
+      () => configuration.onDidChange(settings.textTone, () => { this.push('textTone'); }),
+    ]);
   }
 
   current(): DisplayValues {
@@ -142,16 +164,15 @@ class Host implements DisplayHost {
     return { dispose: () => { this.detach(attachment); } };
   }
 
-  async press(message: unknown, source: string): Promise<PressReading> {
+  press(message: unknown, source: string): Promise<PressReading> {
+    this.live();
     const reading = readPress(message);
-    if (reading.accepted) {
-      await this.apply(reading.press, source);
-    }
 
-    return reading;
+    return reading.accepted ? this.apply(reading.press, source).then(() => reading) : Promise.resolve(reading);
   }
 
   apply(press: Press, source: string): Promise<void> {
+    this.live();
     // The read happens INSIDE the queued work, so the second of two quick presses reads what the first wrote.
     const writing = this.queues[press.kind].run(() => this.write(press));
 
@@ -168,8 +189,21 @@ class Host implements DisplayHost {
     }
   }
 
-  /** Read, step, clamp, write — one setting, at the moment the queue reaches this press. */
+  /** Refuse a press on a disposed host — a setting written now would reach no page. */
+  private live(): void {
+    if (this.disposed) {
+      throw new Error('the display host is disposed: a press now would write a setting no page is kept in step with');
+    }
+  }
+
+  /**
+   * Read, step, clamp, write — one setting, at the moment the queue reaches this press. A press the queue
+   * reaches after {@link dispose} is dropped here: it was queued while the host lived, and is not written.
+   */
   private async write(press: Press): Promise<void> {
+    if (this.disposed) {
+      return;
+    }
     const { configuration, settings } = this.options;
     const setting = press.kind === 'zoom' ? settings.uiScale : settings.textTone;
     const clamp = press.kind === 'zoom' ? clampScale : clampTone;
@@ -191,15 +225,28 @@ class Host implements DisplayHost {
     return kind === 'uiScale' ? uiScaleMessage(uiScale) : textToneMessage(textTone, this.options.config);
   }
 
-  /** One page, one message: a `false` or a rejection means the page is gone — report it, let it go. */
+  /**
+   * One page, one message: a `false` or a rejection means the page is gone — report it, let it go. The
+   * outermost frame of a detached execution, so it catches EVERYTHING and never rejects (common.reliability,
+   * the third boundary): what throws past the post itself is the consumer's, and goes to `reporterFailed`.
+   */
   private async deliver(attachment: Attachment, message: DisplayMessage): Promise<void> {
     try {
-      if (await attachment.webview.postMessage(message)) {
-        return;
+      const failure = await undelivered(attachment.webview, message);
+      if (failure !== undefined) {
+        this.lost(attachment, message.type, failure);
       }
-      this.lost(attachment, message.type, 'postMessage resolved false');
-    } catch (reason: unknown) {
-      this.lost(attachment, message.type, asText(reason));
+    } catch (error: unknown) {
+      this.reporterFailed(error);
+    }
+  }
+
+  /** The consumer's `reporterFailed`, or `console.error` — and `console.error` with both errors when it throws. */
+  private reporterFailed(error: unknown): void {
+    try {
+      (this.options.reporterFailed ?? logReporterFailure)(error);
+    } catch (alsoFailed: unknown) {
+      console.error('vscode-webview-kit: reporterFailed threw while handling a failure at the edge of a display push', error, alsoFailed);
     }
   }
 
@@ -223,7 +270,21 @@ class Host implements DisplayHost {
 
 type PressKindKey = Press['kind'];
 
-/** The one way to make a host. Two listeners are hooked at once; `dispose()` unhooks them. */
+/** Why one post did not reach its page — `postMessage resolved false`, or the rejection as text — or nothing when it did. */
+async function undelivered(webview: WebviewPort, message: DisplayMessage): Promise<string | undefined> {
+  try {
+    return (await webview.postMessage(message)) ? undefined : 'postMessage resolved false';
+  } catch (reason: unknown) {
+    return asText(reason);
+  }
+}
+
+/** The default `reporterFailed`: the error, on the extension host's own log. */
+function logReporterFailure(error: unknown): void {
+  console.error("vscode-webview-kit: a display push could not be reported — the consumer's pushNotDelivered threw", error);
+}
+
+/** The one way to make a host. Two listeners are hooked at once, both or neither; `dispose()` unhooks them. */
 export function createDisplayHost(options: DisplayHostOptions): DisplayHost {
   return new Host(options);
 }

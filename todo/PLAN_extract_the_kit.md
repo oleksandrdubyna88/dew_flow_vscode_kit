@@ -188,7 +188,12 @@ webview→host trust boundary, publishing credentials).
   as coai did. A lost push is reported through a second funnel, `DisplayReporter.pushNotDelivered`,
   because `SettingNotSaved` is the wrong notice for it. The recorder (`scripts/record-coai-display.mjs`)
   gained a typed `vscode` stub, so the host fixture — messages per offset, writes per press — is derived
-  from coai's own `uiScaleHost.ts` / `textToneHost.ts`, not retyped.
+  from coai's own `uiScaleHost.ts` / `textToneHost.ts`, not retyped. After the epic 2 code round
+  (findings 0, 2, 3, 4, 5): `press` / `apply` throw after `dispose()` as `attach` does, and a press still
+  queued then is dropped; both constructors make their hooks all or none (`webview/hooks.ts`); a reporter
+  that throws at the detached edge of a push goes to a new optional `reporterFailed` (default
+  `console.error`) instead of an unhandled rejection; `createCatalog` keeps deep-frozen copies, never the
+  input's own objects.
 - **E2.S2 — `help/catalog` and `help/digest` with stale detection** (Opus). `types.ts`, `digest.ts`,
   `catalog.ts` (`bodyFor` → `{ body, fallback, stale: 'fresh' | 'stale' | 'unknown' }`),
   `bootstrap.ts` (`stampTranslations`), `coverage.ts`. Tests: a digest vector literal, bootstrap → nothing

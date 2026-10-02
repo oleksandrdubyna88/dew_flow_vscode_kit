@@ -77,7 +77,16 @@ that is absent or empty — and answers `{ accepted: false, reason }` for anythi
 A valid press is clamped and written once, to the user scope, through a per-setting write queue; the
 change event then pushes the new value to every attached page. A page whose `postMessage` resolves
 `false` or rejects is reported through `pushNotDelivered` and detached. `display.dispose()` on
-deactivate unhooks everything.
+deactivate unhooks everything; `attach`, `press` and `apply` throw after it, and a press still queued
+behind a write in flight is dropped rather than written.
+
+A push runs detached, so nothing it does can reject: if your `pushNotDelivered` throws (or a page's
+dispose hook does as the page is let go), the error goes to the optional `reporterFailed` —
+`console.error` when you pass none:
+
+```ts
+const display = createDisplayHost({ config, settings, configuration, reporter, reporterFailed: (error) => log.error(error) });
+```
 
 ### The help catalog: stale translations fail YOUR build
 
@@ -100,7 +109,9 @@ export const catalog = createCatalog({ articles: HELP_ARTICLES, translations: { 
 ```
 
 `createCatalog` refuses a malformed catalog when the extension loads (a body for an article that does not
-exist, a missing field, a `from` that is not 8 lowercase hex, …), naming what and where.
+exist, a missing field, a `from` that is not 8 lowercase hex, …), naming what and where. The catalog
+keeps frozen COPIES of what it checked, so editing your modules' objects afterwards changes nothing it
+answers — make a new catalog instead.
 `bodyFor(catalog, article, language)` answers `{ body, fallback, stale }`: the translation, or English with
 `fallback: true`; `stale` is `fresh`, `stale` (its `from` is an older English digest) or `unknown` (it has
 no `from`).
@@ -195,7 +206,9 @@ to the page live; a `language` is written only when it is one of `catalog.langua
 language outside that list and any other shape are refused with a reason and write nothing. A failed
 language write is reported once through `settingNotSaved`, naming `help`. When the panel closes — or on
 `help.dispose()` — its four hooks are unhooked (the language listener, the message listener, the display
-attachment, the dispose listener); the display host is yours and stays.
+attachment, the dispose listener); the display host is yours and stays. The four are made all or none: if
+one cannot be registered, `createHelpPanel` undoes the ones before it — the display attachment included —
+and rethrows.
 
 **The page's CSP** is `default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-…'`, with a nonce
 minted per render on the page's one script and no inline handler anywhere. `renderHelpPage` refuses a

@@ -98,6 +98,24 @@ test('a failed write rejects with the reason the test gave — undefined include
   assert.equal(configuration.read(SCALE), 6, 'only the NEXT write fails');
 });
 
+test('a failed watch throws the reason the test gave, for that setting only, hooks nothing, and only once', () => {
+  const configuration = new FakeConfiguration([SCALE, TONE]);
+  const refused = new Error('the registration was refused');
+  configuration.failNextWatch(TONE, refused);
+  let told = 0;
+
+  configuration.onDidChange(SCALE, () => { told += 1; });
+  assert.throws(() => configuration.onDidChange(TONE, () => { told += 100; }), (reason: unknown) => reason === refused);
+  assert.equal(configuration.liveListeners(TONE), 0, 'a refused watch hooked a listener');
+  assert.equal(configuration.liveListeners(SCALE), 1, 'the other setting was refused too');
+
+  configuration.onDidChange(TONE, () => { told += 10; });
+  configuration.change(TONE, 1);
+  configuration.change(SCALE, 1);
+  assert.equal(told, 11, 'only the NEXT watch fails, and the refused listener is never told');
+  assert.throws(() => configuration.failNextWatch(STRANGER, refused), /fail a watch of kit\.helpLanguage/);
+});
+
 test('an outside change is stored and told, and counts no write', () => {
   const configuration = new FakeConfiguration([SCALE]);
   let seen: unknown = 'untouched';

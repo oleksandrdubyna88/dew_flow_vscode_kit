@@ -49,7 +49,7 @@ const TYPES: readonly string[] = [
 /** Names that exist in the kit and must NOT be public — the test that a widening of the index did not leak one. */
 const INTERNAL: readonly string[] = [
   'Host', 'Panel', 'sha256Hex', 'HELP_CHROME', 'SECTION_LABELS', 'SECTION_ORDER', 'noteHtml', 'helpScript', 'translatedEntry', 'translatedLanguages',
-  'postedRecord', 'ownMember', 'isEmptyField', 'fieldNotText', 'DIGEST_LENGTH',
+  'postedRecord', 'ownMember', 'isEmptyField', 'fieldNotText', 'DIGEST_LENGTH', 'hookAll',
 ];
 
 const sorted = (names: readonly string[]): string[] => [...names].sort();

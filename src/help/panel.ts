@@ -1,6 +1,7 @@
 import type { DisplayHost } from '../display/host';
 import type { ConfigurationPort, Disposable, SettingName, WebviewPort } from '../display/port';
 import { settingWritten, type SettingReporter } from '../settings/settingWritten';
+import { hookAll } from '../webview/hooks';
 import { nonce } from '../webview/nonce';
 import { WriteQueue } from '../webview/writeQueue';
 import { readHelpMessage, type HelpAction, type HelpMessageReading } from './messages';
@@ -27,7 +28,9 @@ import type { Catalog, HelpLanguage } from './types';
  * once through `settingWritten` with the consumer's reporter, naming `help`.</p>
  *
  * <p><b>Lifetime</b> (plan §5): four hooks — the language setting's listener, the port's message
- * listener, the display attachment, and the port's dispose event — and `dispose()` unhooks all four,
+ * listener, the display attachment, and the port's dispose event — made all or none (`webview/hooks.ts`:
+ * if a later one cannot be registered, the earlier ones, the display attachment included, are undone
+ * before the error is rethrown; gate, epic 2 code round, finding 3) — and `dispose()` unhooks all four,
  * whether called or reached through the panel closing. The display host is the consumer's and is left
  * alone. After dispose, `render` and `handle` throw: a closed page holds nothing, and a consumer driving
  * one is a programming error worth hearing about. A pending write still lands.</p>
@@ -80,12 +83,13 @@ class Panel implements HelpPanel {
     // The page first, then the hooks — coai's order: the attachment pushes the current size and tone to a
     // page that already has its HTML, and a render that throws (a consumer's appendix) leaves nothing hooked.
     this.render();
-    this.hooks = [
-      display.attach(panel),
-      configuration.onDidChange(languageSetting, () => { this.render(); }),
-      panel.onDidReceiveMessage((message) => { void this.handle(message); }),
-      panel.onDidDispose(() => { this.dispose(); }),
-    ];
+    // All or none: a registration that throws undoes the ones before it — the display attachment included.
+    this.hooks = hookAll([
+      () => display.attach(panel),
+      () => configuration.onDidChange(languageSetting, () => { this.render(); }),
+      () => panel.onDidReceiveMessage((message) => { void this.handle(message); }),
+      () => panel.onDidDispose(() => { this.dispose(); }),
+    ]);
   }
 
   language(): HelpLanguage {
@@ -147,7 +151,7 @@ class Panel implements HelpPanel {
   }
 }
 
-/** The one way to make a help panel. Four hooks are made and the page rendered at once; `dispose()` unhooks them. */
+/** The one way to make a help panel. The page is rendered and four hooks are made at once, all or none; `dispose()` unhooks them. */
 export function createHelpPanel(options: HelpPanelOptions): HelpPanel {
   return new Panel(options);
 }

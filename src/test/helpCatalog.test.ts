@@ -1,14 +1,17 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
+import { createDisplayConfig } from '../display/config';
 import { bodyFor, createCatalog, type CatalogInput } from '../help/catalog';
 import { digestOf } from '../help/digest';
+import { renderHelpPage } from '../help/page';
 import {
   HELP_LANGUAGE_LABELS,
   HELP_LANGUAGES,
   TRANSLATED_LANGUAGES,
   type HelpArticle,
   type HelpBody,
+  type TranslatedLanguage,
   type Translation,
 } from '../help/types';
 import { RECORDED_HELP } from './coaiFixture';
@@ -278,3 +281,57 @@ test('bodyFor reads the catalog and never writes it', () => {
   assert.deepEqual(catalog, before);
 });
 
+
+// ---------- the validate-once boundary: the catalog holds copies, frozen all the way down ----------
+
+const PAGE_DISPLAY = createDisplayConfig('ConnectOtherAIs', 'coai');
+const PAGE_NONCE = 'AAAAAAAAAAAAAAAAAAAAAA';
+
+test('the catalog never aliases its input: editing what was handed in after createCatalog changes nothing bodyFor or the page shows', () => {
+  const articles = [article('alpha'), article('beta'), article('gamma')];
+  const ru = translationOf('ru', articles);
+  const translations: Partial<Record<TranslatedLanguage, Translation>> = { ru, uk: translationOf('uk', articles.slice(0, 2)) };
+  const catalog = createCatalog({ articles, translations });
+  const seen = (): unknown => ({
+    ids: catalog.articles.map((a) => a.id),
+    languages: [...catalog.languages],
+    shown: catalog.articles.flatMap((a) => catalog.languages.map((language) => bodyFor(catalog, a, language))),
+    pages: catalog.languages.map((language) => renderHelpPage({ catalog, language, display: PAGE_DISPLAY, nonce: PAGE_NONCE })),
+  });
+  const before = seen();
+
+  // Every edit below goes through a mutable view of an input object — what a consumer in plain JavaScript,
+  // or a module that builds its content lazily, can do after the catalog has been validated and handed out.
+  const englishTitle: { title: string } = articles[0]!.en;
+  englishTitle.title = 'an English title edited after validation';
+  const englishBody: { why: string } = articles[1]!.en;
+  englishBody.why = 'an English body field edited after validation';
+  const translatedBody: { usage: string } = ru.bodies['alpha']!;
+  translatedBody.usage = 'a translated body edited after validation';
+  const fromMap: Record<string, string> = ru.from;
+  fromMap['alpha'] = '00000000';
+  const renamed: { id: string } = articles[2]!;
+  renamed.id = 'renamed';
+  articles.push(article('delta'));
+  translations.de = translationOf('de', [articles[0]!]);
+
+  assert.deepEqual(seen(), before, 'the catalog showed an edit made to its input after createCatalog');
+});
+
+test('every record of the catalog is frozen — an article, a body, a translation, its maps — so nothing reached through it can be edited', () => {
+  const catalog = createCatalog(fresh());
+
+  assert.deepEqual(unfrozen(catalog, 'catalog'), [], 'records of the catalog that can still be written');
+  const title: { title: string } = catalog.articles[0]!.en;
+  assert.throws(() => { title.title = 'edited through the catalog'; }, TypeError);
+});
+
+/** The path of every object under `value` that is not frozen. */
+function unfrozen(value: unknown, path: string): string[] {
+  if (typeof value !== 'object' || value === null) {
+    return [];
+  }
+  const own = Object.isFrozen(value) ? [] : [path];
+
+  return [...own, ...Object.entries(value).flatMap(([key, child]) => unfrozen(child, `${path}.${key}`))];
+}

@@ -1,9 +1,66 @@
 /**
  * `@oleksandrdubyna88/vscode-webview-kit` — the public surface.
  *
- * Empty at E1.S1 of `todo/PLAN_extract_the_kit.md`: this story lands the repository machinery and the
- * test harness. E1.S2 adds `text`, `webview` and `settings`; E1.S3 adds `display/zoom` and
- * `display/tone`; Epic 2 adds the host ports and the help subsystem and fills this file with the
- * whole 0.1.0 API.
+ * <p>Filled in two steps of `todo/PLAN_extract_the_kit.md`: E2.S1 (this) exports the display subsystem —
+ * the ± text size and ± text tone controls' pure halves, their host behind the two ports, the press
+ * validator — and the setting-write reporter the host reports through. E2.S3 adds `text`, `webview` and
+ * `help` and makes this the whole 0.1.0 API.</p>
+ *
+ * <p>Nothing here imports `vscode`: a consumer adapts its own `vscode` objects to `ConfigurationPort` and
+ * `WebviewPort` (the shape is in `display/port.ts`'s docblock) and bundles this package with esbuild.</p>
  */
-export {};
+
+// display — configuration
+export { createDisplayConfig, isUsablePrefix, usablePrefix, type DisplayConfig } from './display/config';
+
+// display — the ± text size, pure half
+export {
+  UI_SCALE_MAX,
+  UI_SCALE_MIN,
+  ZOOM_CSS,
+  clampScale,
+  offsetLabel,
+  scalePx,
+  zoomControlHtml,
+  zoomScript,
+  zoomStyle,
+} from './display/zoom';
+
+// display — the ± text tone, pure half
+export {
+  TEXT_TONE_MAX,
+  TEXT_TONE_MIN,
+  clampTone,
+  toneColour,
+  toneColours,
+  toneControlHtml,
+  toneCss,
+  toneLabel,
+  toneScript,
+  toneStyle,
+} from './display/tone';
+
+// display — the host half, its ports, and the webview → host validation
+export type {
+  ConfigurationPort,
+  Disposable,
+  DisplayMessage,
+  SettingName,
+  TextToneMessage,
+  UiScaleMessage,
+  WebviewPort,
+} from './display/port';
+export { textToneMessage, uiScaleMessage } from './display/messages';
+export { readPress, type Press, type PressKind, type PressReading, type PressRejection, type Step } from './display/press';
+export {
+  createDisplayHost,
+  type DisplayHost,
+  type DisplayHostOptions,
+  type DisplayReporter,
+  type DisplaySettings,
+  type DisplayValues,
+  type PushNotDelivered,
+} from './display/host';
+
+// settings — the "a view setting could not be saved" reporter the host reports through
+export { settingWritten, type SettingNotSaved, type SettingReporter } from './settings/settingWritten';

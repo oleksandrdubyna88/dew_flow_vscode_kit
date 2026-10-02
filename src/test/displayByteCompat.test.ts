@@ -1,11 +1,10 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { test } from 'node:test';
 
 import type { DisplayConfig } from '../display/config';
 import { clampTone, toneColour, toneControlHtml, toneCss, toneLabel, toneScript, toneStyle } from '../display/tone';
 import { clampScale, offsetLabel, scalePx, ZOOM_CSS, zoomControlHtml, zoomScript, zoomStyle } from '../display/zoom';
+import { RECORDED, RECORDED_OFFSETS } from './coaiFixture';
 import { assertNoCr } from './lineEndings';
 
 /**
@@ -17,28 +16,11 @@ import { assertNoCr } from './lineEndings';
 
 const COAI: DisplayConfig = { product: 'ConnectOtherAIs', cssPrefix: 'coai' };
 
-interface ZoomRecord { scalePx: number; offsetLabel: string; zoomControlHtml: string; zoomStyle: string }
-interface ToneRecord { toneLabel: string; toneColour: string; toneColourEditor: string; toneStyle: string; toneControlHtml: string }
-interface Recorded {
-  source: string;
-  zoom: Record<string, ZoomRecord>;
-  tone: Record<string, ToneRecord>;
-  zoomScript: string;
-  ZOOM_CSS: string;
-  toneScript: string;
-  TONE_CSS: string;
-  clamp: { scale: number[]; tone: number[] };
-}
-
-const RECORDED = JSON.parse(
-  readFileSync(join(__dirname, '..', '..', 'src', 'test', 'fixtures', 'coai-display-1056aed9.json'), 'utf8'),
-) as Recorded;
-
 const CLAMP_INPUTS: readonly unknown[] = [null, 'x', 2.9, -2.9, Infinity, Number.NaN];
 
 test('the fixture is the one recorded from coai 1056aed9, with every offset the tests walk', () => {
   assert.match(RECORDED.source, /1056aed9/);
-  assert.deepEqual(Object.keys(RECORDED.zoom).map(Number).sort((a, b) => a - b), [-7, -5, -3, -1, 0, 1, 2, 3, 5, 9]);
+  assert.deepEqual(Object.keys(RECORDED.zoom).map(Number).sort((a, b) => a - b), [...RECORDED_OFFSETS]);
 });
 
 for (const [offset, expected] of Object.entries(RECORDED.zoom)) {

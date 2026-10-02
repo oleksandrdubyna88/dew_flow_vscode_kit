@@ -1,5 +1,5 @@
 {
-  "source": "dew_flow_connect_other_ais@1056aed9 src_vs_code/src/{zoomControl,textTone}.ts",
+  "source": "dew_flow_connect_other_ais@1056aed9 src_vs_code/src/{zoomControl,textTone,uiScaleHost,textToneHost}.ts",
   "zoom": {
     "0": {
       "scalePx": 13,
@@ -154,6 +154,220 @@
       -2,
       0,
       0
+    ]
+  },
+  "host": {
+    "section": "coai",
+    "keys": {
+      "uiScale": "uiScale",
+      "textTone": "textTone"
+    },
+    "uiScale": {
+      "0": {
+        "type": "uiScale",
+        "px": 13,
+        "label": ""
+      },
+      "1": {
+        "type": "uiScale",
+        "px": 14.3,
+        "label": "+1"
+      },
+      "2": {
+        "type": "uiScale",
+        "px": 15.73,
+        "label": "+2"
+      },
+      "3": {
+        "type": "uiScale",
+        "px": 17.3,
+        "label": "+3"
+      },
+      "5": {
+        "type": "uiScale",
+        "px": 20.94,
+        "label": "+5"
+      },
+      "9": {
+        "type": "uiScale",
+        "px": 20.94,
+        "label": "+5"
+      },
+      "-7": {
+        "type": "uiScale",
+        "px": 8.07,
+        "label": "−5"
+      },
+      "-5": {
+        "type": "uiScale",
+        "px": 8.07,
+        "label": "−5"
+      },
+      "-3": {
+        "type": "uiScale",
+        "px": 9.77,
+        "label": "−3"
+      },
+      "-1": {
+        "type": "uiScale",
+        "px": 11.82,
+        "label": "−1"
+      }
+    },
+    "textTone": {
+      "0": {
+        "type": "textTone",
+        "color": "",
+        "read": "",
+        "label": ""
+      },
+      "1": {
+        "type": "textTone",
+        "color": "color-mix(in srgb, var(--vscode-foreground) 92%, var(--coai-tone-away) 8%)",
+        "read": "color-mix(in srgb, var(--vscode-editor-foreground) 92%, var(--coai-tone-away) 8%)",
+        "label": "+1"
+      },
+      "2": {
+        "type": "textTone",
+        "color": "color-mix(in srgb, var(--vscode-foreground) 84%, var(--coai-tone-away) 16%)",
+        "read": "color-mix(in srgb, var(--vscode-editor-foreground) 84%, var(--coai-tone-away) 16%)",
+        "label": "+2"
+      },
+      "3": {
+        "type": "textTone",
+        "color": "color-mix(in srgb, var(--vscode-foreground) 76%, var(--coai-tone-away) 24%)",
+        "read": "color-mix(in srgb, var(--vscode-editor-foreground) 76%, var(--coai-tone-away) 24%)",
+        "label": "+3"
+      },
+      "5": {
+        "type": "textTone",
+        "color": "color-mix(in srgb, var(--vscode-foreground) 60%, var(--coai-tone-away) 40%)",
+        "read": "color-mix(in srgb, var(--vscode-editor-foreground) 60%, var(--coai-tone-away) 40%)",
+        "label": "+5"
+      },
+      "9": {
+        "type": "textTone",
+        "color": "color-mix(in srgb, var(--vscode-foreground) 60%, var(--coai-tone-away) 40%)",
+        "read": "color-mix(in srgb, var(--vscode-editor-foreground) 60%, var(--coai-tone-away) 40%)",
+        "label": "+5"
+      },
+      "-7": {
+        "type": "textTone",
+        "color": "color-mix(in srgb, var(--vscode-foreground) 60%, var(--coai-tone-warm) 40%)",
+        "read": "color-mix(in srgb, var(--vscode-editor-foreground) 60%, var(--coai-tone-warm) 40%)",
+        "label": "−5"
+      },
+      "-5": {
+        "type": "textTone",
+        "color": "color-mix(in srgb, var(--vscode-foreground) 60%, var(--coai-tone-warm) 40%)",
+        "read": "color-mix(in srgb, var(--vscode-editor-foreground) 60%, var(--coai-tone-warm) 40%)",
+        "label": "−5"
+      },
+      "-3": {
+        "type": "textTone",
+        "color": "color-mix(in srgb, var(--vscode-foreground) 76%, var(--coai-tone-warm) 24%)",
+        "read": "color-mix(in srgb, var(--vscode-editor-foreground) 76%, var(--coai-tone-warm) 24%)",
+        "label": "−3"
+      },
+      "-1": {
+        "type": "textTone",
+        "color": "color-mix(in srgb, var(--vscode-foreground) 92%, var(--coai-tone-warm) 8%)",
+        "read": "color-mix(in srgb, var(--vscode-editor-foreground) 92%, var(--coai-tone-warm) 8%)",
+        "label": "−1"
+      }
+    },
+    "writes": [
+      {
+        "current": 0,
+        "delta": 1,
+        "uiScale": 1,
+        "textTone": 1,
+        "scope": "Global"
+      },
+      {
+        "current": 0,
+        "delta": -1,
+        "uiScale": -1,
+        "textTone": -1,
+        "scope": "Global"
+      },
+      {
+        "current": 4,
+        "delta": 1,
+        "uiScale": 5,
+        "textTone": 5,
+        "scope": "Global"
+      },
+      {
+        "current": 5,
+        "delta": 1,
+        "uiScale": 5,
+        "textTone": 5,
+        "scope": "Global"
+      },
+      {
+        "current": -4,
+        "delta": -1,
+        "uiScale": -5,
+        "textTone": -5,
+        "scope": "Global"
+      },
+      {
+        "current": -5,
+        "delta": -1,
+        "uiScale": -5,
+        "textTone": -5,
+        "scope": "Global"
+      },
+      {
+        "current": 2,
+        "delta": 99,
+        "uiScale": 3,
+        "textTone": 3,
+        "scope": "Global"
+      },
+      {
+        "current": 2,
+        "delta": -99,
+        "uiScale": 1,
+        "textTone": 1,
+        "scope": "Global"
+      },
+      {
+        "current": 2,
+        "delta": 0.5,
+        "uiScale": 3,
+        "textTone": 3,
+        "scope": "Global"
+      },
+      {
+        "current": 3,
+        "delta": 0,
+        "uiScale": 3,
+        "textTone": 3,
+        "scope": "Global"
+      },
+      {
+        "current": "x",
+        "delta": 1,
+        "uiScale": 1,
+        "textTone": 1,
+        "scope": "Global"
+      },
+      {
+        "current": null,
+        "delta": -1,
+        "uiScale": -1,
+        "textTone": -1,
+        "scope": "Global"
+      },
+      {
+        "current": 2.9,
+        "delta": 1,
+        "uiScale": 3,
+        "textTone": 3,
+        "scope": "Global"
+      }
     ]
   }
 }

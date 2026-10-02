@@ -130,6 +130,10 @@ help panel disposes all of them when it closes — a closed page holds nothing.
    version is `npm deprecate`d with the reason. Nothing is ever unpublished.
 4. **A failed switch is a reverted pull request** in that consumer — its previous modules are in its git
    history, and a consumer that never switched is unaffected by a kit release.
+5. **A publish that fails** (credentials, provenance, registry) leaves the release-please tag and GitHub
+   release in place and nothing on npm. The tag is never moved or deleted: the cause is fixed on `main`, the
+   next release-please PR cuts the next patch, and that tag publishes. No consumer switches until a version
+   is on npm and verified (point 1).
 
 ## 7. Epics and stories (split 2026-10-02, on Fable, as the gate's operator commands require)
 
@@ -271,11 +275,34 @@ consumer switches. The ConnectOtherAIs switch (its consumer-level tests, the `st
 bootstrap of its four translation modules, deleting the moved modules) and wsl_care's first extension
 commit are pull requests in those repositories.
 
+**Epic 3 plan round (session `7dea9617`, 2026-10-02):**
+
+| # | Lands in | Decision |
+|---|---|---|
+| 0 | E3.S2 | **Accepted.** `needs:` cannot reach a job in another workflow file. `pack-and-consume` becomes a reusable workflow (`workflow_call`) that `ci.yml` and `release.yml` both call; the publish job `needs:` its in-file call. |
+| 1 | E3.S1 | **Accepted in part.** `prepublishOnly` already runs `build` + `test`, but `npm pack` (what `pack-and-consume` runs) does not trigger it: `package.json` adds `"prepack": "npm run build"`, and `pack-and-consume.mjs` asserts the tarball carries `dist/index.js` and `dist/index.d.ts` before installing it. |
+| 2, 4, 5 | §8 | **Accepted.** The DoD is split in three, each closed separately: **A — pipeline ready** (this epic, no secrets needed), **B — first credentialed release** (a gated step after the owner adds the secrets, with its own verification and failure handling — §6), **C — consumer switches** (follow-up plans in ConnectOtherAIs and wsl_care, started only after B). This plan is promoted when A and B are done; C is tracked by the consumers' own plans. |
+| 3 | E3.S2 | **Accepted.** `actions/setup-node` with `registry-url: https://registry.npmjs.org`; the publish step gets `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}` — npm reads that, not `NPM_TOKEN`. |
+| 6 | E3.S2 | **Accepted.** `id-token: write` and the npm secret live on the publish job alone, which runs only on `release: published` for a `v*` tag cut by release-please from `main`, never on `pull_request` (so never on a fork), behind a GitHub environment `npm` that holds `NPM_TOKEN`. The provenance identity (`oleksandrdubyna88/dew_flow_vscode_kit`, `release.yml`, environment `npm`) is written into README "Release and rollback"; once 0.1.0 exists, npm trusted publishing is bound to that same identity and the token is retired. |
+
 ## 8. Definition of Done
 
-- [ ] 0.1.0 published from CI with provenance; `npm view @oleksandrdubyna88/vscode-webview-kit` shows it.
+**A — pipeline ready (epic 3):**
+
 - [ ] Byte-compat tests green and shown to have teeth.
 - [ ] Stale-translation detection implemented and tested.
+- [ ] `pack-and-consume` green on ubuntu and windows: the PACKED tarball installs, bundles with esbuild and runs; a misspelled import turns it red.
+- [ ] release-please opens a release PR on `main`; `release.yml` validates (actionlint) and its publish job is unreachable from `pull_request`.
+- [ ] `research/architecture.md`, `research/module_tests.md` describe what shipped; README "Release and rollback" names the provenance identity.
+
+**B — first credentialed release (after the owner adds `NPM_TOKEN` to the `npm` environment and the release-please App secrets):**
+
+- [ ] 0.1.0 published from CI with provenance; `npm view @oleksandrdubyna88/vscode-webview-kit` shows it and `npm audit signatures` verifies it.
+- [ ] On a failed publish: nothing is retagged, the cause is fixed on `main`, and the next release-please PR cuts 0.1.1 — the order in §6.
+- [ ] Trusted publishing bound to the identity above; the token removed.
+- [ ] This plan promoted to `research/`.
+
+**C — consumer switches (their own plans, after B):**
+
 - [ ] ConnectOtherAIs switched (merged PR), suite green; no copy of these modules left there.
-- [ ] wsl_care's extension imports the package.
-- [ ] `research/architecture.md`, `research/module_tests.md` describe what shipped; this plan promoted.
+- [ ] wsl_care's extension imports the package (its E8).

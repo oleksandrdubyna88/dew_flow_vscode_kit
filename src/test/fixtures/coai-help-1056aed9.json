@@ -1,0 +1,1382 @@
+{
+  "source": "dew_flow_connect_other_ais@1056aed9 src_vs_code/src/helpContent.ts (bodyFor, HELP_LANGUAGES, HELP_LANGUAGE_LABELS), helpRu/Uk/De/Es.ts",
+  "languages": [
+    "en",
+    "ru",
+    "uk",
+    "de",
+    "es"
+  ],
+  "labels": {
+    "en": "English",
+    "ru": "Русский",
+    "uk": "Українська",
+    "de": "Deutsch",
+    "es": "Español"
+  },
+  "synthetic": {
+    "articles": [
+      {
+        "id": "alpha",
+        "en": {
+          "title": "alpha en title",
+          "whatItIs": "alpha en what it is",
+          "why": "alpha en why",
+          "setup": "alpha en setup",
+          "usage": "alpha en usage",
+          "whatCanGoWrong": "alpha en what can go wrong"
+        }
+      },
+      {
+        "id": "beta",
+        "en": {
+          "title": "beta en title",
+          "whatItIs": "beta en what it is",
+          "why": "beta en why",
+          "setup": "beta en setup",
+          "usage": "beta en usage",
+          "whatCanGoWrong": "beta en what can go wrong"
+        }
+      },
+      {
+        "id": "gamma",
+        "en": {
+          "title": "gamma en title",
+          "whatItIs": "gamma en what it is",
+          "why": "gamma en why",
+          "setup": "gamma en setup",
+          "usage": "gamma en usage",
+          "whatCanGoWrong": "gamma en what can go wrong"
+        }
+      },
+      {
+        "id": "constructor",
+        "en": {
+          "title": "constructor en title",
+          "whatItIs": "constructor en what it is",
+          "why": "constructor en why",
+          "setup": "constructor en setup",
+          "usage": "constructor en usage",
+          "whatCanGoWrong": "constructor en what can go wrong"
+        }
+      }
+    ],
+    "translations": {
+      "ru": {
+        "alpha": {
+          "title": "alpha ru title",
+          "whatItIs": "alpha ru what it is",
+          "why": "alpha ru why",
+          "setup": "alpha ru setup",
+          "usage": "alpha ru usage",
+          "whatCanGoWrong": "alpha ru what can go wrong"
+        },
+        "beta": {
+          "title": "beta ru title",
+          "whatItIs": "beta ru what it is",
+          "why": "beta ru why",
+          "setup": "beta ru setup",
+          "usage": "beta ru usage",
+          "whatCanGoWrong": "beta ru what can go wrong"
+        }
+      },
+      "uk": {
+        "alpha": {
+          "title": "alpha uk title",
+          "whatItIs": "alpha uk what it is",
+          "why": "alpha uk why",
+          "setup": "alpha uk setup",
+          "usage": "alpha uk usage",
+          "whatCanGoWrong": "alpha uk what can go wrong"
+        }
+      },
+      "de": {},
+      "es": {
+        "alpha": {
+          "title": "alpha es title",
+          "whatItIs": "alpha es what it is",
+          "why": "alpha es why",
+          "setup": "alpha es setup",
+          "usage": "alpha es usage",
+          "whatCanGoWrong": "alpha es what can go wrong"
+        },
+        "beta": {
+          "title": "beta es title",
+          "whatItIs": "beta es what it is",
+          "why": "beta es why",
+          "setup": "beta es setup",
+          "usage": "beta es usage",
+          "whatCanGoWrong": "beta es what can go wrong"
+        },
+        "gamma": {
+          "title": "gamma es title",
+          "whatItIs": "gamma es what it is",
+          "why": "gamma es why",
+          "setup": "gamma es setup",
+          "usage": "gamma es usage",
+          "whatCanGoWrong": "gamma es what can go wrong"
+        }
+      }
+    },
+    "bodyFor": [
+      {
+        "article": "alpha",
+        "language": "en",
+        "fallback": false,
+        "bodyType": "object",
+        "body": {
+          "title": "alpha en title",
+          "whatItIs": "alpha en what it is",
+          "why": "alpha en why",
+          "setup": "alpha en setup",
+          "usage": "alpha en usage",
+          "whatCanGoWrong": "alpha en what can go wrong"
+        }
+      },
+      {
+        "article": "alpha",
+        "language": "ru",
+        "fallback": false,
+        "bodyType": "object",
+        "body": {
+          "title": "alpha ru title",
+          "whatItIs": "alpha ru what it is",
+          "why": "alpha ru why",
+          "setup": "alpha ru setup",
+          "usage": "alpha ru usage",
+          "whatCanGoWrong": "alpha ru what can go wrong"
+        }
+      },
+      {
+        "article": "alpha",
+        "language": "uk",
+        "fallback": false,
+        "bodyType": "object",
+        "body": {
+          "title": "alpha uk title",
+          "whatItIs": "alpha uk what it is",
+          "why": "alpha uk why",
+          "setup": "alpha uk setup",
+          "usage": "alpha uk usage",
+          "whatCanGoWrong": "alpha uk what can go wrong"
+        }
+      },
+      {
+        "article": "alpha",
+        "language": "de",
+        "fallback": true,
+        "bodyType": "object",
+        "body": {
+          "title": "alpha en title",
+          "whatItIs": "alpha en what it is",
+          "why": "alpha en why",
+          "setup": "alpha en setup",
+          "usage": "alpha en usage",
+          "whatCanGoWrong": "alpha en what can go wrong"
+        }
+      },
+      {
+        "article": "alpha",
+        "language": "es",
+        "fallback": false,
+        "bodyType": "object",
+        "body": {
+          "title": "alpha es title",
+          "whatItIs": "alpha es what it is",
+          "why": "alpha es why",
+          "setup": "alpha es setup",
+          "usage": "alpha es usage",
+          "whatCanGoWrong": "alpha es what can go wrong"
+        }
+      },
+      {
+        "article": "beta",
+        "language": "en",
+        "fallback": false,
+        "bodyType": "object",
+        "body": {
+          "title": "beta en title",
+          "whatItIs": "beta en what it is",
+          "why": "beta en why",
+          "setup": "beta en setup",
+          "usage": "beta en usage",
+          "whatCanGoWrong": "beta en what can go wrong"
+        }
+      },
+      {
+        "article": "beta",
+        "language": "ru",
+        "fallback": false,
+        "bodyType": "object",
+        "body": {
+          "title": "beta ru title",
+          "whatItIs": "beta ru what it is",
+          "why": "beta ru why",
+          "setup": "beta ru setup",
+          "usage": "beta ru usage",
+          "whatCanGoWrong": "beta ru what can go wrong"
+        }
+      },
+      {
+        "article": "beta",
+        "language": "uk",
+        "fallback": true,
+        "bodyType": "object",
+        "body": {
+          "title": "beta en title",
+          "whatItIs": "beta en what it is",
+          "why": "beta en why",
+          "setup": "beta en setup",
+          "usage": "beta en usage",
+          "whatCanGoWrong": "beta en what can go wrong"
+        }
+      },
+      {
+        "article": "beta",
+        "language": "de",
+        "fallback": true,
+        "bodyType": "object",
+        "body": {
+          "title": "beta en title",
+          "whatItIs": "beta en what it is",
+          "why": "beta en why",
+          "setup": "beta en setup",
+          "usage": "beta en usage",
+          "whatCanGoWrong": "beta en what can go wrong"
+        }
+      },
+      {
+        "article": "beta",
+        "language": "es",
+        "fallback": false,
+        "bodyType": "object",
+        "body": {
+          "title": "beta es title",
+          "whatItIs": "beta es what it is",
+          "why": "beta es why",
+          "setup": "beta es setup",
+          "usage": "beta es usage",
+          "whatCanGoWrong": "beta es what can go wrong"
+        }
+      },
+      {
+        "article": "gamma",
+        "language": "en",
+        "fallback": false,
+        "bodyType": "object",
+        "body": {
+          "title": "gamma en title",
+          "whatItIs": "gamma en what it is",
+          "why": "gamma en why",
+          "setup": "gamma en setup",
+          "usage": "gamma en usage",
+          "whatCanGoWrong": "gamma en what can go wrong"
+        }
+      },
+      {
+        "article": "gamma",
+        "language": "ru",
+        "fallback": true,
+        "bodyType": "object",
+        "body": {
+          "title": "gamma en title",
+          "whatItIs": "gamma en what it is",
+          "why": "gamma en why",
+          "setup": "gamma en setup",
+          "usage": "gamma en usage",
+          "whatCanGoWrong": "gamma en what can go wrong"
+        }
+      },
+      {
+        "article": "gamma",
+        "language": "uk",
+        "fallback": true,
+        "bodyType": "object",
+        "body": {
+          "title": "gamma en title",
+          "whatItIs": "gamma en what it is",
+          "why": "gamma en why",
+          "setup": "gamma en setup",
+          "usage": "gamma en usage",
+          "whatCanGoWrong": "gamma en what can go wrong"
+        }
+      },
+      {
+        "article": "gamma",
+        "language": "de",
+        "fallback": true,
+        "bodyType": "object",
+        "body": {
+          "title": "gamma en title",
+          "whatItIs": "gamma en what it is",
+          "why": "gamma en why",
+          "setup": "gamma en setup",
+          "usage": "gamma en usage",
+          "whatCanGoWrong": "gamma en what can go wrong"
+        }
+      },
+      {
+        "article": "gamma",
+        "language": "es",
+        "fallback": false,
+        "bodyType": "object",
+        "body": {
+          "title": "gamma es title",
+          "whatItIs": "gamma es what it is",
+          "why": "gamma es why",
+          "setup": "gamma es setup",
+          "usage": "gamma es usage",
+          "whatCanGoWrong": "gamma es what can go wrong"
+        }
+      },
+      {
+        "article": "constructor",
+        "language": "en",
+        "fallback": false,
+        "bodyType": "object",
+        "body": {
+          "title": "constructor en title",
+          "whatItIs": "constructor en what it is",
+          "why": "constructor en why",
+          "setup": "constructor en setup",
+          "usage": "constructor en usage",
+          "whatCanGoWrong": "constructor en what can go wrong"
+        }
+      },
+      {
+        "article": "constructor",
+        "language": "ru",
+        "fallback": false,
+        "bodyType": "function",
+        "body": null
+      },
+      {
+        "article": "constructor",
+        "language": "uk",
+        "fallback": false,
+        "bodyType": "function",
+        "body": null
+      },
+      {
+        "article": "constructor",
+        "language": "de",
+        "fallback": false,
+        "bodyType": "function",
+        "body": null
+      },
+      {
+        "article": "constructor",
+        "language": "es",
+        "fallback": false,
+        "bodyType": "function",
+        "body": null
+      }
+    ]
+  },
+  "real": {
+    "articleIds": [
+      "install-the-server",
+      "choose-reviewers",
+      "teach-your-ai",
+      "the-gate",
+      "the-gates-commands",
+      "a-local-model",
+      "prompts-per-round",
+      "your-own-roles",
+      "limits",
+      "language-and-translator",
+      "vendor-keys",
+      "team-servers",
+      "chat-with-other-ai",
+      "the-consultant",
+      "phrases",
+      "bugz",
+      "review-bugs-page",
+      "who-holds-a-key",
+      "recent-rounds",
+      "the-rounds-log",
+      "notifications",
+      "what-each-ai-has-used",
+      "questions-waiting",
+      "prompts-in-full",
+      "the-help-page",
+      "the-settings-tab",
+      "the-protocol",
+      "where-reviewers-run",
+      "when-a-reviewer-fails",
+      "settings-and-the-server",
+      "move-your-config",
+      "the-audit-log",
+      "where-your-data-lives"
+    ],
+    "translatedIds": {
+      "ru": [
+        "the-settings-tab",
+        "phrases",
+        "notifications",
+        "your-own-roles",
+        "chat-with-other-ai",
+        "the-consultant",
+        "install-the-server",
+        "choose-reviewers",
+        "a-local-model",
+        "teach-your-ai",
+        "the-gate",
+        "the-gates-commands",
+        "prompts-per-round",
+        "limits",
+        "language-and-translator",
+        "vendor-keys",
+        "team-servers",
+        "bugz",
+        "review-bugs-page",
+        "who-holds-a-key",
+        "recent-rounds",
+        "the-rounds-log",
+        "what-each-ai-has-used",
+        "questions-waiting",
+        "prompts-in-full",
+        "the-help-page",
+        "the-protocol",
+        "where-reviewers-run",
+        "when-a-reviewer-fails",
+        "settings-and-the-server",
+        "move-your-config",
+        "the-audit-log",
+        "where-your-data-lives"
+      ],
+      "uk": [
+        "install-the-server",
+        "choose-reviewers",
+        "teach-your-ai",
+        "the-gate",
+        "the-gates-commands",
+        "a-local-model",
+        "prompts-per-round",
+        "your-own-roles",
+        "limits",
+        "language-and-translator",
+        "vendor-keys",
+        "team-servers",
+        "chat-with-other-ai",
+        "the-consultant",
+        "phrases",
+        "bugz",
+        "review-bugs-page",
+        "who-holds-a-key",
+        "recent-rounds",
+        "the-rounds-log",
+        "notifications",
+        "what-each-ai-has-used",
+        "questions-waiting",
+        "prompts-in-full",
+        "the-help-page",
+        "the-settings-tab",
+        "the-protocol",
+        "where-reviewers-run",
+        "when-a-reviewer-fails",
+        "settings-and-the-server",
+        "move-your-config",
+        "the-audit-log",
+        "where-your-data-lives"
+      ],
+      "de": [
+        "the-settings-tab",
+        "phrases",
+        "notifications",
+        "your-own-roles",
+        "chat-with-other-ai",
+        "the-consultant",
+        "install-the-server",
+        "choose-reviewers",
+        "a-local-model",
+        "teach-your-ai",
+        "the-gate",
+        "the-gates-commands",
+        "prompts-per-round",
+        "limits",
+        "language-and-translator",
+        "vendor-keys",
+        "team-servers",
+        "bugz",
+        "review-bugs-page",
+        "who-holds-a-key",
+        "recent-rounds",
+        "the-rounds-log",
+        "what-each-ai-has-used",
+        "questions-waiting",
+        "prompts-in-full",
+        "the-help-page",
+        "the-protocol",
+        "where-reviewers-run",
+        "when-a-reviewer-fails",
+        "settings-and-the-server",
+        "move-your-config",
+        "the-audit-log",
+        "where-your-data-lives"
+      ],
+      "es": [
+        "the-settings-tab",
+        "phrases",
+        "notifications",
+        "your-own-roles",
+        "chat-with-other-ai",
+        "the-consultant",
+        "install-the-server",
+        "choose-reviewers",
+        "a-local-model",
+        "teach-your-ai",
+        "the-gate",
+        "the-gates-commands",
+        "prompts-per-round",
+        "limits",
+        "language-and-translator",
+        "vendor-keys",
+        "team-servers",
+        "bugz",
+        "review-bugs-page",
+        "who-holds-a-key",
+        "recent-rounds",
+        "the-rounds-log",
+        "what-each-ai-has-used",
+        "questions-waiting",
+        "prompts-in-full",
+        "the-help-page",
+        "the-protocol",
+        "where-reviewers-run",
+        "when-a-reviewer-fails",
+        "settings-and-the-server",
+        "move-your-config",
+        "the-audit-log",
+        "where-your-data-lives"
+      ]
+    },
+    "fallback": [
+      {
+        "article": "install-the-server",
+        "language": "en",
+        "fallback": false
+      },
+      {
+        "article": "install-the-server",
+        "language": "ru",
+        "fallback": false
+      },
+      {
+        "article": "install-the-server",
+        "language": "uk",
+        "fallback": false
+      },
+      {
+        "article": "install-the-server",
+        "language": "de",
+        "fallback": false
+      },
+      {
+        "article": "install-the-server",
+        "language": "es",
+        "fallback": false
+      },
+      {
+        "article": "choose-reviewers",
+        "language": "en",
+        "fallback": false
+      },
+      {
+        "article": "choose-reviewers",
+        "language": "ru",
+        "fallback": false
+      },
+      {
+        "article": "choose-reviewers",
+        "language": "uk",
+        "fallback": false
+      },
+      {
+        "article": "choose-reviewers",
+        "language": "de",
+        "fallback": false
+      },
+      {
+        "article": "choose-reviewers",
+        "language": "es",
+        "fallback": false
+      },
+      {
+        "article": "teach-your-ai",
+        "language": "en",
+        "fallback": false
+      },
+      {
+        "article": "teach-your-ai",
+        "language": "ru",
+        "fallback": false
+      },
+      {
+        "article": "teach-your-ai",
+        "language": "uk",
+        "fallback": false
+      },
+      {
+        "article": "teach-your-ai",
+        "language": "de",
+        "fallback": false
+      },
+      {
+        "article": "teach-your-ai",
+        "language": "es",
+        "fallback": false
+      },
+      {
+        "article": "the-gate",
+        "language": "en",
+        "fallback": false
+      },
+      {
+        "article": "the-gate",
+        "language": "ru",
+        "fallback": false
+      },
+      {
+        "article": "the-gate",
+        "language": "uk",
+        "fallback": false
+      },
+      {
+        "article": "the-gate",
+        "language": "de",
+        "fallback": false
+      },
+      {
+        "article": "the-gate",
+        "language": "es",
+        "fallback": false
+      },
+      {
+        "article": "the-gates-commands",
+        "language": "en",
+        "fallback": false
+      },
+      {
+        "article": "the-gates-commands",
+        "language": "ru",
+        "fallback": false
+      },
+      {
+        "article": "the-gates-commands",
+        "language": "uk",
+        "fallback": false
+      },
+      {
+        "article": "the-gates-commands",
+        "language": "de",
+        "fallback": false
+      },
+      {
+        "article": "the-gates-commands",
+        "language": "es",
+        "fallback": false
+      },
+      {
+        "article": "a-local-model",
+        "language": "en",
+        "fallback": false
+      },
+      {
+        "article": "a-local-model",
+        "language": "ru",
+        "fallback": false
+      },
+      {
+        "article": "a-local-model",
+        "language": "uk",
+        "fallback": false
+      },
+      {
+        "article": "a-local-model",
+        "language": "de",
+        "fallback": false
+      },
+      {
+        "article": "a-local-model",
+        "language": "es",
+        "fallback": false
+      },
+      {
+        "article": "prompts-per-round",
+        "language": "en",
+        "fallback": false
+      },
+      {
+        "article": "prompts-per-round",
+        "language": "ru",
+        "fallback": false
+      },
+      {
+        "article": "prompts-per-round",
+        "language": "uk",
+        "fallback": false
+      },
+      {
+        "article": "prompts-per-round",
+        "language": "de",
+        "fallback": false
+      },
+      {
+        "article": "prompts-per-round",
+        "language": "es",
+        "fallback": false
+      },
+      {
+        "article": "your-own-roles",
+        "language": "en",
+        "fallback": false
+      },
+      {
+        "article": "your-own-roles",
+        "language": "ru",
+        "fallback": false
+      },
+      {
+        "article": "your-own-roles",
+        "language": "uk",
+        "fallback": false
+      },
+      {
+        "article": "your-own-roles",
+        "language": "de",
+        "fallback": false
+      },
+      {
+        "article": "your-own-roles",
+        "language": "es",
+        "fallback": false
+      },
+      {
+        "article": "limits",
+        "language": "en",
+        "fallback": false
+      },
+      {
+        "article": "limits",
+        "language": "ru",
+        "fallback": false
+      },
+      {
+        "article": "limits",
+        "language": "uk",
+        "fallback": false
+      },
+      {
+        "article": "limits",
+        "language": "de",
+        "fallback": false
+      },
+      {
+        "article": "limits",
+        "language": "es",
+        "fallback": false
+      },
+      {
+        "article": "language-and-translator",
+        "language": "en",
+        "fallback": false
+      },
+      {
+        "article": "language-and-translator",
+        "language": "ru",
+        "fallback": false
+      },
+      {
+        "article": "language-and-translator",
+        "language": "uk",
+        "fallback": false
+      },
+      {
+        "article": "language-and-translator",
+        "language": "de",
+        "fallback": false
+      },
+      {
+        "article": "language-and-translator",
+        "language": "es",
+        "fallback": false
+      },
+      {
+        "article": "vendor-keys",
+        "language": "en",
+        "fallback": false
+      },
+      {
+        "article": "vendor-keys",
+        "language": "ru",
+        "fallback": false
+      },
+      {
+        "article": "vendor-keys",
+        "language": "uk",
+        "fallback": false
+      },
+      {
+        "article": "vendor-keys",
+        "language": "de",
+        "fallback": false
+      },
+      {
+        "article": "vendor-keys",
+        "language": "es",
+        "fallback": false
+      },
+      {
+        "article": "team-servers",
+        "language": "en",
+        "fallback": false
+      },
+      {
+        "article": "team-servers",
+        "language": "ru",
+        "fallback": false
+      },
+      {
+        "article": "team-servers",
+        "language": "uk",
+        "fallback": false
+      },
+      {
+        "article": "team-servers",
+        "language": "de",
+        "fallback": false
+      },
+      {
+        "article": "team-servers",
+        "language": "es",
+        "fallback": false
+      },
+      {
+        "article": "chat-with-other-ai",
+        "language": "en",
+        "fallback": false
+      },
+      {
+        "article": "chat-with-other-ai",
+        "language": "ru",
+        "fallback": false
+      },
+      {
+        "article": "chat-with-other-ai",
+        "language": "uk",
+        "fallback": false
+      },
+      {
+        "article": "chat-with-other-ai",
+        "language": "de",
+        "fallback": false
+      },
+      {
+        "article": "chat-with-other-ai",
+        "language": "es",
+        "fallback": false
+      },
+      {
+        "article": "the-consultant",
+        "language": "en",
+        "fallback": false
+      },
+      {
+        "article": "the-consultant",
+        "language": "ru",
+        "fallback": false
+      },
+      {
+        "article": "the-consultant",
+        "language": "uk",
+        "fallback": false
+      },
+      {
+        "article": "the-consultant",
+        "language": "de",
+        "fallback": false
+      },
+      {
+        "article": "the-consultant",
+        "language": "es",
+        "fallback": false
+      },
+      {
+        "article": "phrases",
+        "language": "en",
+        "fallback": false
+      },
+      {
+        "article": "phrases",
+        "language": "ru",
+        "fallback": false
+      },
+      {
+        "article": "phrases",
+        "language": "uk",
+        "fallback": false
+      },
+      {
+        "article": "phrases",
+        "language": "de",
+        "fallback": false
+      },
+      {
+        "article": "phrases",
+        "language": "es",
+        "fallback": false
+      },
+      {
+        "article": "bugz",
+        "language": "en",
+        "fallback": false
+      },
+      {
+        "article": "bugz",
+        "language": "ru",
+        "fallback": false
+      },
+      {
+        "article": "bugz",
+        "language": "uk",
+        "fallback": false
+      },
+      {
+        "article": "bugz",
+        "language": "de",
+        "fallback": false
+      },
+      {
+        "article": "bugz",
+        "language": "es",
+        "fallback": false
+      },
+      {
+        "article": "review-bugs-page",
+        "language": "en",
+        "fallback": false
+      },
+      {
+        "article": "review-bugs-page",
+        "language": "ru",
+        "fallback": false
+      },
+      {
+        "article": "review-bugs-page",
+        "language": "uk",
+        "fallback": false
+      },
+      {
+        "article": "review-bugs-page",
+        "language": "de",
+        "fallback": false
+      },
+      {
+        "article": "review-bugs-page",
+        "language": "es",
+        "fallback": false
+      },
+      {
+        "article": "who-holds-a-key",
+        "language": "en",
+        "fallback": false
+      },
+      {
+        "article": "who-holds-a-key",
+        "language": "ru",
+        "fallback": false
+      },
+      {
+        "article": "who-holds-a-key",
+        "language": "uk",
+        "fallback": false
+      },
+      {
+        "article": "who-holds-a-key",
+        "language": "de",
+        "fallback": false
+      },
+      {
+        "article": "who-holds-a-key",
+        "language": "es",
+        "fallback": false
+      },
+      {
+        "article": "recent-rounds",
+        "language": "en",
+        "fallback": false
+      },
+      {
+        "article": "recent-rounds",
+        "language": "ru",
+        "fallback": false
+      },
+      {
+        "article": "recent-rounds",
+        "language": "uk",
+        "fallback": false
+      },
+      {
+        "article": "recent-rounds",
+        "language": "de",
+        "fallback": false
+      },
+      {
+        "article": "recent-rounds",
+        "language": "es",
+        "fallback": false
+      },
+      {
+        "article": "the-rounds-log",
+        "language": "en",
+        "fallback": false
+      },
+      {
+        "article": "the-rounds-log",
+        "language": "ru",
+        "fallback": false
+      },
+      {
+        "article": "the-rounds-log",
+        "language": "uk",
+        "fallback": false
+      },
+      {
+        "article": "the-rounds-log",
+        "language": "de",
+        "fallback": false
+      },
+      {
+        "article": "the-rounds-log",
+        "language": "es",
+        "fallback": false
+      },
+      {
+        "article": "notifications",
+        "language": "en",
+        "fallback": false
+      },
+      {
+        "article": "notifications",
+        "language": "ru",
+        "fallback": false
+      },
+      {
+        "article": "notifications",
+        "language": "uk",
+        "fallback": false
+      },
+      {
+        "article": "notifications",
+        "language": "de",
+        "fallback": false
+      },
+      {
+        "article": "notifications",
+        "language": "es",
+        "fallback": false
+      },
+      {
+        "article": "what-each-ai-has-used",
+        "language": "en",
+        "fallback": false
+      },
+      {
+        "article": "what-each-ai-has-used",
+        "language": "ru",
+        "fallback": false
+      },
+      {
+        "article": "what-each-ai-has-used",
+        "language": "uk",
+        "fallback": false
+      },
+      {
+        "article": "what-each-ai-has-used",
+        "language": "de",
+        "fallback": false
+      },
+      {
+        "article": "what-each-ai-has-used",
+        "language": "es",
+        "fallback": false
+      },
+      {
+        "article": "questions-waiting",
+        "language": "en",
+        "fallback": false
+      },
+      {
+        "article": "questions-waiting",
+        "language": "ru",
+        "fallback": false
+      },
+      {
+        "article": "questions-waiting",
+        "language": "uk",
+        "fallback": false
+      },
+      {
+        "article": "questions-waiting",
+        "language": "de",
+        "fallback": false
+      },
+      {
+        "article": "questions-waiting",
+        "language": "es",
+        "fallback": false
+      },
+      {
+        "article": "prompts-in-full",
+        "language": "en",
+        "fallback": false
+      },
+      {
+        "article": "prompts-in-full",
+        "language": "ru",
+        "fallback": false
+      },
+      {
+        "article": "prompts-in-full",
+        "language": "uk",
+        "fallback": false
+      },
+      {
+        "article": "prompts-in-full",
+        "language": "de",
+        "fallback": false
+      },
+      {
+        "article": "prompts-in-full",
+        "language": "es",
+        "fallback": false
+      },
+      {
+        "article": "the-help-page",
+        "language": "en",
+        "fallback": false
+      },
+      {
+        "article": "the-help-page",
+        "language": "ru",
+        "fallback": false
+      },
+      {
+        "article": "the-help-page",
+        "language": "uk",
+        "fallback": false
+      },
+      {
+        "article": "the-help-page",
+        "language": "de",
+        "fallback": false
+      },
+      {
+        "article": "the-help-page",
+        "language": "es",
+        "fallback": false
+      },
+      {
+        "article": "the-settings-tab",
+        "language": "en",
+        "fallback": false
+      },
+      {
+        "article": "the-settings-tab",
+        "language": "ru",
+        "fallback": false
+      },
+      {
+        "article": "the-settings-tab",
+        "language": "uk",
+        "fallback": false
+      },
+      {
+        "article": "the-settings-tab",
+        "language": "de",
+        "fallback": false
+      },
+      {
+        "article": "the-settings-tab",
+        "language": "es",
+        "fallback": false
+      },
+      {
+        "article": "the-protocol",
+        "language": "en",
+        "fallback": false
+      },
+      {
+        "article": "the-protocol",
+        "language": "ru",
+        "fallback": false
+      },
+      {
+        "article": "the-protocol",
+        "language": "uk",
+        "fallback": false
+      },
+      {
+        "article": "the-protocol",
+        "language": "de",
+        "fallback": false
+      },
+      {
+        "article": "the-protocol",
+        "language": "es",
+        "fallback": false
+      },
+      {
+        "article": "where-reviewers-run",
+        "language": "en",
+        "fallback": false
+      },
+      {
+        "article": "where-reviewers-run",
+        "language": "ru",
+        "fallback": false
+      },
+      {
+        "article": "where-reviewers-run",
+        "language": "uk",
+        "fallback": false
+      },
+      {
+        "article": "where-reviewers-run",
+        "language": "de",
+        "fallback": false
+      },
+      {
+        "article": "where-reviewers-run",
+        "language": "es",
+        "fallback": false
+      },
+      {
+        "article": "when-a-reviewer-fails",
+        "language": "en",
+        "fallback": false
+      },
+      {
+        "article": "when-a-reviewer-fails",
+        "language": "ru",
+        "fallback": false
+      },
+      {
+        "article": "when-a-reviewer-fails",
+        "language": "uk",
+        "fallback": false
+      },
+      {
+        "article": "when-a-reviewer-fails",
+        "language": "de",
+        "fallback": false
+      },
+      {
+        "article": "when-a-reviewer-fails",
+        "language": "es",
+        "fallback": false
+      },
+      {
+        "article": "settings-and-the-server",
+        "language": "en",
+        "fallback": false
+      },
+      {
+        "article": "settings-and-the-server",
+        "language": "ru",
+        "fallback": false
+      },
+      {
+        "article": "settings-and-the-server",
+        "language": "uk",
+        "fallback": false
+      },
+      {
+        "article": "settings-and-the-server",
+        "language": "de",
+        "fallback": false
+      },
+      {
+        "article": "settings-and-the-server",
+        "language": "es",
+        "fallback": false
+      },
+      {
+        "article": "move-your-config",
+        "language": "en",
+        "fallback": false
+      },
+      {
+        "article": "move-your-config",
+        "language": "ru",
+        "fallback": false
+      },
+      {
+        "article": "move-your-config",
+        "language": "uk",
+        "fallback": false
+      },
+      {
+        "article": "move-your-config",
+        "language": "de",
+        "fallback": false
+      },
+      {
+        "article": "move-your-config",
+        "language": "es",
+        "fallback": false
+      },
+      {
+        "article": "the-audit-log",
+        "language": "en",
+        "fallback": false
+      },
+      {
+        "article": "the-audit-log",
+        "language": "ru",
+        "fallback": false
+      },
+      {
+        "article": "the-audit-log",
+        "language": "uk",
+        "fallback": false
+      },
+      {
+        "article": "the-audit-log",
+        "language": "de",
+        "fallback": false
+      },
+      {
+        "article": "the-audit-log",
+        "language": "es",
+        "fallback": false
+      },
+      {
+        "article": "where-your-data-lives",
+        "language": "en",
+        "fallback": false
+      },
+      {
+        "article": "where-your-data-lives",
+        "language": "ru",
+        "fallback": false
+      },
+      {
+        "article": "where-your-data-lives",
+        "language": "uk",
+        "fallback": false
+      },
+      {
+        "article": "where-your-data-lives",
+        "language": "de",
+        "fallback": false
+      },
+      {
+        "article": "where-your-data-lives",
+        "language": "es",
+        "fallback": false
+      }
+    ]
+  }
+}

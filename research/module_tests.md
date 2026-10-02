@@ -18,9 +18,15 @@ The helpers the tests share:
   refuses a selector shape it cannot read, and what the page posts must be structured-cloneable.
 - `src/test/lineEndings.ts` (E1.S1) — `assertNoCr(text, what)`, failing with the index of the first CR, so
   a rendered fragment cannot pass on one platform and fail on the other.
-- `src/test/coaiFixture.ts` (E2.S1) — the one reader of `src/test/fixtures/coai-display-1056aed9.json`,
-  which `scripts/record-coai-display.mjs` writes from ConnectOtherAIs' own modules at `1056aed9` (the
-  pure halves directly; the host halves through a typed `vscode` stub). Nothing in it is retyped.
+- `src/test/coaiFixture.ts` (E2.S1, E2.S2) — the one reader of the coai recordings:
+  `src/test/fixtures/coai-display-1056aed9.json`, which `scripts/record-coai-display.mjs` writes from
+  ConnectOtherAIs' own modules at `1056aed9` (the pure halves directly; the host halves through a typed
+  `vscode` stub), and `src/test/fixtures/coai-help-1056aed9.json`, which `scripts/record-coai-help.mjs`
+  writes from coai's own `helpContent.ts` (over partial translation modules it writes, and over coai's own
+  four). Nothing in either is retyped.
+- `src/test/fixtures/helpDigestsCatalog.ts` (E2.S2) — a consumer's catalog module as `help-digests`
+  loads one: a stale, an unknown and a fresh translation (`catalog`), an all-fresh one (`freshCatalog`),
+  and an invalid input (`brokenInput`); every `from` read back from `digestOf`.
 - `src/test/fakeDisplayPorts.ts` (E2.S1) — strict fakes of the display host's two ports.
   `FakeConfiguration` refuses, by name, any setting the test did not declare; records every applied
   write; can hold writes pending (all, or one setting's) and release them, fail the next write with a
@@ -31,7 +37,9 @@ The helpers the tests share:
 `src/test/architecture.test.ts` scans every pure module — everything under `src/` outside `src/test/` and
 the host allowlist (`src/webview/nonce.ts`) — for `vscode` / `node:` imports and fails naming `file:line`;
 a companion test proves the scan finds all four import shapes in a fixture, so it cannot pass vacuously.
-The display host, its ports and the press validator are pure by this scan: the allowlist did not grow.
+The display host, its ports and the press validator are pure by this scan, and so is the whole help
+catalog — `sha256.ts` included, which is why SHA-256 is TypeScript here (see `architecture.md`): the
+allowlist did not grow.
 
 ## Flow catalogue
 
@@ -39,7 +47,17 @@ The display host, its ports and the press validator are pure by this scan: the a
 |---|---|---|
 | A page script runs under the harness: a press posts through `acquireVsCodeApi`, a pushed message repaints, an undeclared global is a `ReferenceError`, an infinite loop fails by the deadline | covered | `src/test/harness.test.ts` |
 | No pure module imports `vscode` or a `node:` API | covered | `src/test/architecture.test.ts` |
-| A consumer renders the help page and navigates it | not covered | the help module is not built yet (E2.S2, E2.S3) |
+| A consumer renders the help page and navigates it | not covered | the help page and panel are not built yet (E2.S3) |
+| **SHA-256** (`src/help/sha256.ts`, pure TypeScript) equals the standard: FIPS 180-2's five vectors (empty, `abc`, the 448- and 896-bit messages, one million `a`), and `node:crypto` at every length 0–200 bytes and over 300 seeded random strings (Cyrillic, emoji, NUL, lone surrogates) | covered | `src/test/sha256.test.ts` — red first against a stub answering 64 zeros: 7 of 8 red (`actual '0000…' expected 'e3b0c442…'`) |
+| **The digest's canonical form** (plan §2): the six fields by name in the fixed order, joined with U+0000, UTF-8, no other normalisation, first 8 hex — two vector literals computed independently by `node:crypto` (`fb76c375`, and `eafba843` for a Cyrillic body); CRLF ≠ LF, a trailing space or newline and a decomposed accent each change it; moving a character across a field boundary changes it; extra properties do not; a missing field is refused by name; `isDigest` accepts 8 lowercase hex only | covered | `src/test/digest.test.ts` — red first against a first cut that normalised CRLF, trimmed and joined with no separator: 7 of 12 red (`'TitleWhat it is…'` for the canonical form; CRLF and LF both `1e500044`; a missing field threw `Cannot read properties of undefined`). Teeth: emptying the separator turns the two vectors, the canonical form and the boundary test red |
+| For coai's content `bodyFor` answers coai's **body and `fallback`**: every answer coai's own `bodyFor` gave over partial modules (a missing body, an empty language), recorded by `scripts/record-coai-help.mjs`; the fallback matrix over coai's real coverage (33 articles × 5 languages); `HELP_LANGUAGES` and the labels | covered | `src/test/helpCatalog.test.ts` (passes against a straight port of coai's engine too — it is the compatibility half) |
+| **Deviation:** an article id that is a key of `Object.prototype` (`constructor`) — coai answered the Object function as its translated body (recorded); the kit reads own properties only and falls back to English | covered | `src/test/helpCatalog.test.ts` — red first against coai's port. Teeth: a prototype lookup turns both own-property tests red |
+| **`stale`**: `fresh` when `from` equals the current English digest; an English edit makes exactly that article `stale` in every language that has it, the others fresh; a body with no `from` is `unknown`; English and a fallback are always `fresh` | covered | `src/test/helpCatalog.test.ts` — red first against coai's port (`stale` always `fresh`: `actual 'fresh' expected 'unknown'`). Teeth: folding `unknown` into `fresh` turns 7 tests red across the catalog, coverage and script suites |
+| **`createCatalog` refuses** a defective input with a message naming what and where: no articles, an empty or repeated id, a body missing a field (English or translated), a module for an unknown language or for `en`, a body for an article the catalog lacks, a `from` with no body, a `from` that is not a digest, a module with no `bodies` map; the fixture they start from is accepted; languages are derived (English + modules, switch order); input is never written and later changes to it do not reach the catalog | covered | `src/test/helpCatalog.test.ts` — red first: every refusal *Missing expected exception*; languages `['en','ru','uk','de','es']` for a catalog with three modules; the catalog shared the input's array |
+| **The bootstrap**: `stampTranslations` stamps every translated body — and only those — with its current English digest, in article order; afterwards `staleTranslations` is empty and every `bodyFor` fresh; a stale `from` is overwritten (the stated assumption); new objects, input never written | covered | `src/test/helpCoverage.test.ts` — red first against a stub handing the modules back: `from` stayed `{}`, every body `unknown` |
+| **The consumer's CI check**: `staleTranslations` lists exactly the stale and unknown pairs as `{ article, language, stale, from, current }` (`from: null` when unknown), article then language order, and never a missing body; `everyArticleInEveryLanguage` lists what an offered language does not translate, complete when nothing; over coai's recorded coverage it is complete and every coai translation is `unknown` until bootstrapped | covered | `src/test/helpCoverage.test.ts` — red first against stubs answering `[]` and `complete: true` |
+| **`help-digests` RUN** (a child `node`, 10 s deadline) over a compiled catalog module: prints exactly `staleTranslations`' pairs grouped by language with the replacement `from` line each, exit 1; pasting those lines makes the catalog fresh; a fresh catalog prints one line, exit 0; no module, an absent export and an invalid catalog exit 2 on stderr | covered | `src/test/helpDigests.test.ts` — red first against an empty script (`actual ''`, exit 0 where 2 was expected) |
+| The coai recorders share one extract-and-compile half (`scripts/coai-modules.mjs`); the display recorder, moved onto it, reproduces `coai-display-1056aed9.json` byte for byte | checked by hand | re-recorded and compared with `cmp` (E2.S2); a recorder is not part of the suite |
 | A page's ± size / ± tone press posts one step, a pushed value repaints the page (zoom and tone scripts RUN) | covered | `src/test/displayScripts.test.ts` |
 | For ConnectOtherAIs' config the display markup, scripts and CSS are byte-identical to coai `1056aed9` (values recorded from coai's own modules by `scripts/record-coai-display.mjs`) | covered | `src/test/displayByteCompat.test.ts` — shown to have teeth: a zoom step of 1.2 turns 9 of its tests red |
 | A CSS prefix that could close a rule or a string (`x;}body{…`, a quote, uppercase, empty) is refused when the config is made AND at every point of use, so a forged plain-object config cannot reach a stylesheet | covered | `src/test/displayConfig.test.ts` — red first: 8 tests failed with *Missing expected exception* before `usablePrefix` was wired (gate, epic 1 code round, finding 6) |
@@ -70,6 +88,14 @@ harness) are where a real webview is exercised. In particular:
   not something this suite can observe; a consumer's editor harness is where that is seen.
 - `pushNotDelivered` is assumed not to throw (`DisplayReporter`'s contract); nothing here exercises a
   reporter that does.
+- coai's real help BODIES are not compared — only its id coverage and its engine over small modules; the
+  coai switch PR snapshots its rendered help before and after, which is where 800 KB of real content is
+  held.
+- `help-digests`' default kit path (`../dist/index.js`) needs a build, so the suite passes `--kit`; the
+  default was run by hand against `npm run build` output (E2.S2). The script is not yet in the published
+  package (`files: ["dist"]`).
+- An 8-hex digest is 32 bits: two different English texts sharing one by chance is not tested and is
+  accepted (one in about four billion per edit).
 
 ## When it runs
 

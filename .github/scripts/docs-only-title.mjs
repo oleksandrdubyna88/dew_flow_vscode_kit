@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // docs-only-title.mjs — documentation alone (Markdown and pictures) never opens a release.
 //
-//   node .github/scripts/docs-only-title.mjs --pr <number>      (the facts come from `gh`)
+//   GITHUB_REPOSITORY=<owner>/<repo> node .github/scripts/docs-only-title.mjs --pr <number>
+//                                                              (the facts come from `gh`; Actions sets the variable)
 //   node .github/scripts/docs-only-title.mjs --facts <file>     (the same facts, as JSON)
 //
 // Exit 0  nothing here would release a package on documentation alone.
@@ -119,7 +120,7 @@ function gh(args) {
 function factsOf(pr) {
   const repo = process.env.GITHUB_REPOSITORY;
   if (!repo) {
-    throw new Error('GITHUB_REPOSITORY is not set, so there is no repository to ask');
+    throw new Error('GITHUB_REPOSITORY is not set, so there is no repository to ask — Actions sets it; locally run GITHUB_REPOSITORY=<owner>/<repo> node .github/scripts/docs-only-title.mjs --pr <number>, or pass --facts <file>');
   }
   const title = process.env.PR_TITLE ?? JSON.parse(gh(['api', `repos/${repo}/pulls/${pr}`])).title;
   const lines = (text) => text.split('\n').filter(Boolean);

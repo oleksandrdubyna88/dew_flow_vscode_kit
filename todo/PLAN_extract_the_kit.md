@@ -176,6 +176,18 @@ webview→host trust boundary, publishing credentials).
   finite numeric delta reduced to its sign, anything else rejected), `src/display/host.ts`
   (`createDisplayHost`), a strict fake port. Tests: clamp and one write per press, two quick presses
   both land, push reaches every webview, dispose unhooks, the validation table.
+  *As built:* a fourth file, `src/display/messages.ts`, holds the two pushed-message builders as a pure
+  half. The port is `ConfigurationPort` (read raw / write to the user scope / `onDidChange`, keyed by a
+  `SettingName`) plus `WebviewPort` (`postMessage`, `onDidDispose` — the PANEL's event, which a
+  `vscode.Webview` does not carry, so the consumer's adapter joins the two). `readPress` keeps coai's
+  `textControlFrom` rule where coai's three parsers disagreed — truncate, then one step; below a whole
+  step is no press and no write (coai's `applyZoomDelta` alone wrote the current value back for `0` and
+  stepped on `0.5`) — reads own properties only, and refuses a `field` that is present and not `''`
+  (no coai parser read `field`; the kit's pages post `''`). The host keeps one `WriteQueue` per setting,
+  as coai did. A lost push is reported through a second funnel, `DisplayReporter.pushNotDelivered`,
+  because `SettingNotSaved` is the wrong notice for it. The recorder (`scripts/record-coai-display.mjs`)
+  gained a typed `vscode` stub, so the host fixture — messages per offset, writes per press — is derived
+  from coai's own `uiScaleHost.ts` / `textToneHost.ts`, not retyped.
 - **E2.S2 — `help/catalog` and `help/digest` with stale detection** (Opus). `types.ts`, `digest.ts`,
   `catalog.ts` (`bodyFor` → `{ body, fallback, stale: 'fresh' | 'stale' | 'unknown' }`),
   `bootstrap.ts` (`stampTranslations`), `coverage.ts`. Tests: a digest vector literal, bootstrap → nothing

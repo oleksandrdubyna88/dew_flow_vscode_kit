@@ -1,0 +1,55 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+import type { TextToneMessage, UiScaleMessage } from '../display/port';
+
+/**
+ * What ConnectOtherAIs' own modules computed at `1056aed9`, read once for every byte-compat test.
+ *
+ * <p>The file is written by `scripts/record-coai-display.mjs` and never edited by hand; this module is the
+ * one reader of it, so the pure-half tests (`displayByteCompat.test.ts`) and the host tests
+ * (`displayHost.test.ts`) hold the kit against the same recording.</p>
+ */
+
+export interface ZoomRecord { scalePx: number; offsetLabel: string; zoomControlHtml: string; zoomStyle: string }
+export interface ToneRecord { toneLabel: string; toneColour: string; toneColourEditor: string; toneStyle: string; toneControlHtml: string }
+
+/** One press coai's hosts applied: the stored value before it, the delta the page sent, what each host wrote. */
+export interface WriteRecord {
+  current: unknown;
+  delta: number;
+  uiScale: number;
+  textTone: number;
+  /** The `ConfigurationTarget` both hosts wrote to, by name. */
+  scope: string;
+}
+
+export interface HostRecord {
+  section: string;
+  keys: { uiScale: string; textTone: string };
+  /** The message `pushUiScaleTo` posted on attach, per stored offset. */
+  uiScale: Record<string, UiScaleMessage>;
+  /** The message `pushTextToneTo` posted on attach, per stored offset. */
+  textTone: Record<string, TextToneMessage>;
+  writes: WriteRecord[];
+}
+
+export interface Recorded {
+  source: string;
+  zoom: Record<string, ZoomRecord>;
+  tone: Record<string, ToneRecord>;
+  zoomScript: string;
+  ZOOM_CSS: string;
+  toneScript: string;
+  TONE_CSS: string;
+  clamp: { scale: number[]; tone: number[] };
+  host: HostRecord;
+}
+
+/** The recording, parsed. The cast is the one place the JSON meets a type; `recordedIsWhole` checks its shape. */
+export const RECORDED = JSON.parse(
+  readFileSync(join(__dirname, '..', '..', 'src', 'test', 'fixtures', 'coai-display-1056aed9.json'), 'utf8'),
+) as Recorded;
+
+/** The offsets every recording walks, ascending — the tests iterate the recording, this names what to expect of it. */
+export const RECORDED_OFFSETS: readonly number[] = [-7, -5, -3, -1, 0, 1, 2, 3, 5, 9];

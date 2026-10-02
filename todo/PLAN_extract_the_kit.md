@@ -164,6 +164,10 @@ webview→host trust boundary, publishing credentials).
   byte-compat against coai literals with the source line named, with teeth (a step of 1.2 must make the
   assertion throw); the page scripts RUN (a click posts `{type, delta, field:''}`, a pushed value
   repaints); `assertNoCr` on every fragment.
+  *As built:* the config is made through `createDisplayConfig(product, cssPrefix)`, which refuses a
+  prefix that is not lowercase letters, digits and dashes; `tone.ts` re-checks it at every point of use
+  (`usablePrefix`), because a plain object literal typed as `DisplayConfig` skips the factory (gate,
+  epic 1 code round, finding 6).
 
 ### Epic 2 — Host ports and the help subsystem
 

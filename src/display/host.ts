@@ -73,6 +73,8 @@ export interface DisplayValues {
 }
 
 export interface DisplayHost {
+  /** The consumer's product name and CSS prefix — what every page this host keeps in step renders its controls with. */
+  readonly config: DisplayConfig;
   /** The stored values, clamped; junk reads as the theme's own (`0`). */
   current(): DisplayValues;
   /**
@@ -101,6 +103,7 @@ interface Attachment {
 }
 
 class Host implements DisplayHost {
+  readonly config: DisplayConfig;
   private readonly hooks: readonly Disposable[];
   private readonly queues: Readonly<Record<PressKindKey, WriteQueue>> = { zoom: new WriteQueue(), tone: new WriteQueue() };
   private attached: ReadonlySet<Attachment> = new Set();
@@ -108,6 +111,7 @@ class Host implements DisplayHost {
 
   constructor(private readonly options: DisplayHostOptions) {
     const { configuration, settings } = options;
+    this.config = options.config;
     this.hooks = [
       configuration.onDidChange(settings.uiScale, () => { this.push('uiScale'); }),
       configuration.onDidChange(settings.textTone, () => { this.push('textTone'); }),

@@ -9,6 +9,8 @@ VS Code extensions.
 | `display` | the ± text size and ± text tone controls every page carries, their CSS and page script, and the host half that keeps every open page in step with one global setting |
 | `settings` | one reporter for "a view setting could not be saved" |
 | `webview` | `escapeHtml`, `jsonForScript`, a nonce, and the ordered write queue |
+| `text` | `asText` — text, whatever the caller actually had |
+| bin `vscode-webview-kit-help-digests` | prints the `from` line each stale or unchecked translation needs |
 
 Extracted from ConnectOtherAIs on 2026-10-02; consumers: ConnectOtherAIs, wsl_care.
 
@@ -136,8 +138,79 @@ test('every article exists in every language the switch offers', () => {
 ```
 
 When it goes red, re-check each listed translation against its English article and set its `from` to the
-entry's `current`. In this repository `node scripts/help-digests.mjs <compiled catalog module>` prints
-exactly those lines, grouped by language; it is not in the published package yet.
+entry's `current`. The package ships a bin that prints exactly those lines, grouped by language:
+
+```bash
+npx vscode-webview-kit-help-digests out/helpCatalog.js                     # exit 1 and the lines to paste; exit 0 when nothing is stale
+npx vscode-webview-kit-help-digests out/helpCatalog.js --export myCatalog  # the export is called `catalog` by default
+```
+
+It re-makes the catalog with the kit's own `createCatalog` (a broken module is refused there as at load,
+exit 2) and lists what `staleTranslations` lists. Without `--kit <entry>` it uses the kit it was installed
+with, found beside the script — never relative to the directory you run it from.
+
+### The help page and panel, end to end
+
+The page is pure — `renderHelpPage` is a function from the catalog, a language, the display config and a
+**nonce** to a string — and the panel is its host half, behind one more port. The extension creates the
+`WebviewPanel` (that needs `vscode.window`) and adapts it once:
+
+```ts
+import * as vscode from 'vscode';
+import { createHelpPanel, type HelpPanel, type HelpPanelPort } from '@oleksandrdubyna88/vscode-webview-kit';
+import { catalog } from './helpCatalog';
+import { configuration, display } from './display';   // the ports and the display host from the section above
+
+let open: { panel: vscode.WebviewPanel; help: HelpPanel } | undefined;
+
+export function showHelp(): void {
+  if (open !== undefined) { open.panel.reveal(); return; }
+  const panel = vscode.window.createWebviewPanel('coaiHelp', 'ConnectOtherAIs — Help', vscode.ViewColumn.Active,
+    { enableScripts: true, enableFindWidget: true, localResourceRoots: [] });
+  const port: HelpPanelPort = {
+    setHtml: (html) => { panel.webview.html = html; },
+    postMessage: (message) => panel.webview.postMessage(message),
+    onDidReceiveMessage: (listener) => panel.webview.onDidReceiveMessage(listener),
+    onDidDispose: (listener) => panel.onDidDispose(listener),
+  };
+  const help = createHelpPanel({
+    catalog,
+    display,                                                  // the ONE display host: the help page is attached to it
+    languageSetting: { section: 'coai', key: 'helpLanguage' },
+    configuration,
+    panel: port,
+    settingNotSaved: notify,
+    appendix: (id, language) => (id === 'prompts-in-full' ? promptsHtml(language) : ''),   // optional; your own, escaped markup
+  });
+  open = { panel, help };
+  panel.onDidDispose(() => { open = undefined; });
+}
+```
+
+`createHelpPanel` renders the page at once — the stored language (English when the value is junk or a
+language the catalog has no module for), the display host's current size and tone, a fresh nonce — and
+re-renders when the language setting changes. Every message the page posts is read before anything
+happens: a `zoom` / `tone` press goes to the display host, which writes once and pushes the new value back
+to the page live; a `language` is written only when it is one of `catalog.languages`; an unknown type, a
+language outside that list and any other shape are refused with a reason and write nothing. A failed
+language write is reported once through `settingNotSaved`, naming `help`. When the panel closes — or on
+`help.dispose()` — its four hooks are unhooked (the language listener, the message listener, the display
+attachment, the dispose listener); the display host is yours and stays.
+
+**The page's CSP** is `default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-…'`, with a nonce
+minted per render on the page's one script and no inline handler anywhere. `renderHelpPage` refuses a
+nonce shorter than 22 base64 characters and a language the catalog does not offer. A translation `bodyFor`
+answers as `stale` or `unknown` carries a note under the article's title, in the help's language; a fresh
+catalog renders no note at all, so for ConnectOtherAIs' configuration the page is byte-identical to what
+coai rendered before the extraction.
+
+The pure half alone, to render the page yourself:
+
+```ts
+import { nonce, renderHelpPage } from '@oleksandrdubyna88/vscode-webview-kit';
+
+const html = renderHelpPage({ catalog, language: 'ru', display: display.config, nonce: nonce(), ...display.current() });
+```
 
 ## Develop
 

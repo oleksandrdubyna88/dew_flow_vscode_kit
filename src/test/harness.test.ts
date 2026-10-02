@@ -67,21 +67,87 @@ test('a button press posts through acquireVsCodeApi and lands in posted[]', () =
   assert.deepEqual(smaller.listeners, ['click']);
 });
 
-test('a click runs the element\'s own listeners first and then the document\'s, walking closest() up the tree', () => {
-  const item = new Node({ open: 'quick-start' }, 'LI');
+test('a click runs the element\'s own listeners, then each ancestor\'s, then the document\'s — bubbling as a browser does — and closest() walks the same tree', () => {
+  const list = new Node({}, 'UL');
+  const item = new Node({ open: 'quick-start' }, 'LI').under(list);
   const label = new Node({}, 'SPAN').under(item);
   const page = runPageScript(`
     const vscode = acquireVsCodeApi();
     document.querySelector('li').addEventListener('click', () => { vscode.postMessage('own'); });
+    document.querySelector('ul').addEventListener('click', (event) => {
+      vscode.postMessage('list: ' + event.target.closest('li[data-open]').dataset.open + ' at ' + event.currentTarget.tagName);
+    });
     document.addEventListener('click', (event) => {
       const hit = event.target.closest('[data-open]');
       vscode.postMessage(hit === null ? 'document: miss' : 'document: ' + hit.dataset.open);
-    });`, { li: [item], span: [label] });
+    });`, { li: [item], ul: [list], span: [label] });
 
   item.click();
   label.click();
 
-  assert.deepEqual(page.posted, ['own', 'document: quick-start', 'document: quick-start']);
+  assert.deepEqual(page.posted, [
+    'own', 'list: quick-start at UL', 'document: quick-start',
+    'own', 'list: quick-start at UL', 'document: quick-start',
+  ]);
+});
+
+test('fire runs the listeners of THAT kind only, bubbles them the same way, and hands over the init the test gave', () => {
+  const search = new Node({}, 'INPUT');
+  const row = new Node({}, 'DIV');
+  search.under(row);
+  const page = runPageScript(`
+    const vscode = acquireVsCodeApi();
+    const search = document.getElementById('search');
+    search.addEventListener('input', () => { vscode.postMessage('input: ' + search.value); });
+    search.addEventListener('click', () => { vscode.postMessage('click'); });
+    document.getElementById('row').addEventListener('input', (event) => { vscode.postMessage('row saw ' + event.target.value); });
+    document.getElementById('language').addEventListener('change', (event) => { vscode.postMessage('change: ' + event.target.value); });
+    document.addEventListener('input', () => { vscode.postMessage('document'); });`, {}, { search, row, language: new Node({}, 'SELECT') });
+
+  search.value = 'abc';
+  search.fire('input');
+  const select = new Node({}, 'SELECT');
+  assert.throws(() => select.fire('change'), /is not in the running page/);
+
+  assert.deepEqual(page.posted, ['input: abc', 'row saw abc', 'document']);
+});
+
+test('a keydown dispatched by the test reaches the document\'s keydown listeners with its key, and only those', () => {
+  const page = runPageScript(`
+    const vscode = acquireVsCodeApi();
+    document.addEventListener('keydown', (event) => { vscode.postMessage('key: ' + event.key); });
+    document.addEventListener('click', () => { vscode.postMessage('click'); });`);
+
+  page.keydown('Escape');
+  page.keydown('a');
+
+  assert.deepEqual(page.posted, ['key: Escape', 'key: a']);
+});
+
+test('window.scrollTo is recorded, as the one window call a page makes besides listening', () => {
+  const page = runPageScript('window.scrollTo(0, 0); window.scrollTo(10, 240);');
+
+  assert.deepEqual(page.scrolledTo, [[0, 0], [10, 240]]);
+});
+
+test('querySelectorAll on a node answers its matching descendants in document order — deep ones included — and nothing outside it', () => {
+  const index = new Node({}, 'UL');
+  const first = new Node({ open: 'alpha' }, 'LI').under(index);
+  new Node({}, 'DIV').under(first);
+  const nested = new Node({}, 'DIV').under(index);
+  new Node({ open: 'beta' }, 'LI').under(nested);
+  const other = new Node({ open: 'elsewhere' }, 'LI');
+  const page = runPageScript(`
+    const vscode = acquireVsCodeApi();
+    const index = document.getElementById('index');
+    vscode.postMessage([...index.querySelectorAll('li[data-open]')].map((li) => li.dataset.open));
+    vscode.postMessage(index.querySelectorAll('[data-open="beta"]').length);
+    vscode.postMessage(index.querySelectorAll('span[data-open]').length);
+    vscode.postMessage(index.querySelector('[data-open]') === null ? 'none' : index.querySelector('[data-open]').dataset.open);
+    vscode.postMessage(index.querySelector('[data-absent]'));`, { li: [other] }, { index });
+
+  assert.deepEqual(page.posted, [['alpha', 'beta'], 1, 0, 'alpha', null]);
+  assert.throws(() => index.querySelectorAll('.hidden'), /reads only \[data-x\] and \[data-x="y"\]/);
 });
 
 test('clicking a node the page was never handed fails instead of doing nothing', () => {
@@ -152,7 +218,7 @@ test('classList keeps className in step: add, remove, toggle and contains', () =
   assert.ok(node.classList.contains('y'));
 });
 
-test('closest matches by presence or by exact value, includes the node itself, and refuses any other selector shape', () => {
+test('closest matches by presence or by exact value, by tag when the selector names one, includes the node itself, and refuses any other selector shape', () => {
   const anchor = new Node({ nav: 'home', removePrompt: 'p1' }, 'A');
   const leaf = new Node({}, 'SPAN').under(anchor);
 
@@ -162,9 +228,12 @@ test('closest matches by presence or by exact value, includes the node itself, a
   assert.equal(leaf.closest('[data-nav="away"]'), null);
   assert.equal(leaf.closest('[data-absent]'), null);
   assert.equal(anchor.closest('[data-nav]'), anchor);
+  assert.equal(leaf.closest('a[data-nav]'), anchor);
+  assert.equal(leaf.closest('a[data-nav="home"]'), anchor);
+  assert.equal(leaf.closest('li[data-nav]'), null, 'a tag the selector names must match too — a browser would not answer the <a>');
 
-  assert.throws(() => leaf.closest('a[data-nav]'), /reads only \[data-x\] and \[data-x="y"\]/);
   assert.throws(() => leaf.closest('.hidden'), /reads only \[data-x\] and \[data-x="y"\]/);
+  assert.throws(() => leaf.closest('a'), /reads only \[data-x\] and \[data-x="y"\]/);
 });
 
 test('setAttribute, textContent, innerHTML, hidden and style are what the page wrote', () => {

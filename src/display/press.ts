@@ -21,7 +21,11 @@
  * parser ever read it. A consumer's own parser hands over `{ type, delta }` with no field at all, which
  * is accepted; a field carrying anything else is refused — a member nobody reads is still a member a
  * page is asserting something with.</p>
+ *
+ * <p>Reading a message as own members only is shared with the help page's reader through
+ * `webview/posted.ts`, so the rule lives once.</p>
  */
+import { isEmptyField, ownMember, postedRecord, type PostedRecord } from '../webview/posted';
 
 /** Which control was pressed. */
 export type PressKind = 'zoom' | 'tone';
@@ -55,21 +59,21 @@ export type PressReading =
 
 /** Read a posted message. Never throws. */
 export function readPress(message: unknown): PressReading {
-  const said = recordOf(message);
+  const said = postedRecord(message);
 
   return said === undefined ? refused('not-an-object') : pressOf(said);
 }
 
-function pressOf(said: Readonly<Record<string, unknown>>): PressReading {
-  const kind = kindOf(own(said, 'type'));
-  const step = stepOf(own(said, 'delta'));
+function pressOf(said: PostedRecord): PressReading {
+  const kind = kindOf(ownMember(said, 'type'));
+  const step = stepOf(ownMember(said, 'delta'));
   if (kind === undefined) {
     return refused('unknown-type');
   }
   if (typeof step === 'string') {
     return refused(step);
   }
-  if (!emptyField(own(said, 'field'))) {
+  if (!isEmptyField(ownMember(said, 'field'))) {
     return refused('field');
   }
 
@@ -78,18 +82,6 @@ function pressOf(said: Readonly<Record<string, unknown>>): PressReading {
 
 function refused(reason: PressRejection): PressReading {
   return { accepted: false, reason };
-}
-
-/** A plain object with string keys, or nothing: arrays and primitives are not messages. */
-function recordOf(message: unknown): Readonly<Record<string, unknown>> | undefined {
-  return typeof message === 'object' && message !== null && !Array.isArray(message)
-    ? (message as Readonly<Record<string, unknown>>)
-    : undefined;
-}
-
-/** The member as the page posted it — an OWN property, never one inherited from a prototype. */
-function own(said: Readonly<Record<string, unknown>>, name: string): unknown {
-  return Object.hasOwn(said, name) ? said[name] : undefined;
 }
 
 function kindOf(type: unknown): PressKind | undefined {
@@ -112,8 +104,4 @@ function stepOf(delta: unknown): Step | 'delta-not-a-number' | 'no-step' {
 /** The delta truncated to whole steps, or nothing when it is not a finite number. `-0.5` truncates to `-0`, which `=== 0`. */
 function wholeDelta(delta: unknown): number | undefined {
   return typeof delta === 'number' && Number.isFinite(delta) ? Math.trunc(delta) : undefined;
-}
-
-function emptyField(field: unknown): boolean {
-  return field === undefined || field === '';
 }

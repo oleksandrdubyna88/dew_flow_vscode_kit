@@ -3,12 +3,17 @@
  * help-digests — which help translations were not made from the current English, and the `from` line
  * each one needs once it has been re-checked.
  *
- * Usage:
- *   node help-digests.mjs <catalog module> [--export <name>] [--kit <kit entry>]
+ * Usage — in a consumer, as the bin this package ships (`package.json` `bin`, since E2.S3):
+ *   npx vscode-webview-kit-help-digests <catalog module> [--export <name>] [--kit <kit entry>]
+ * and in this repository:
+ *   node scripts/help-digests.mjs <catalog module> [--export <name>] [--kit <kit entry>]
  *
  * `<catalog module>` is the consumer's compiled module that exports its catalog (or the
  * `{ articles, translations }` it makes one from) as `catalog`, or under `--export <name>`. `--kit` points
- * at the kit's compiled entry; it defaults to this package's own `dist/index.js` (beside `scripts/`).
+ * at the kit's compiled entry; it defaults to this package's OWN `dist/index.js`, resolved from where this
+ * script lives (`import.meta.url`), never from the cwd — so the installed bin finds the kit it shipped with
+ * (`src/test/packaging.test.ts` runs it from an installed layout), and in this repository it needs
+ * `npm run build` first.
  *
  * It prints exactly the pairs `staleTranslations` lists (epic 2 plan round, finding 0), grouped by
  * language, each as the line to put in that language's `from` map:

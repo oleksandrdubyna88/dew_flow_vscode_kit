@@ -162,6 +162,11 @@ export class FakeWebview implements WebviewPort {
     this.delivery = delivery;
   }
 
+  /** Whether `dispose()` has run — for a fake that extends this one and must refuse what a closed panel refuses. */
+  get isDisposed(): boolean {
+    return this.disposed;
+  }
+
   postMessage(message: DisplayMessage): Promise<boolean> {
     if (this.disposed) {
       this.postedAfterDispose += 1;

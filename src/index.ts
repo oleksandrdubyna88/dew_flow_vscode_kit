@@ -1,15 +1,19 @@
 /**
- * `@oleksandrdubyna88/vscode-webview-kit` — the public surface.
+ * `@oleksandrdubyna88/vscode-webview-kit` — the public surface, whole as of 0.1.0.
  *
  * <p>Filled in three steps of `todo/PLAN_extract_the_kit.md`: E2.S1 exported the display subsystem — the
  * ± text size and ± text tone controls' pure halves, their host behind the two ports, the press validator
- * — and the setting-write reporter the host reports through. E2.S2 adds the help CATALOG: its types, the
+ * — and the setting-write reporter the host reports through. E2.S2 added the help CATALOG: its types, the
  * English digest, `bodyFor` with stale detection, the bootstrap and the two coverage checks a consumer's
- * suite asserts empty. E2.S3 adds the help page and panel, `text` and `webview`, and makes this the
- * whole 0.1.0 API.</p>
+ * suite asserts empty. E2.S3 adds the help PAGE and PANEL with their message reader, and the `text` and
+ * `webview` helpers a consumer's own pages share with the kit's. `src/test/exports.test.ts` pins this
+ * list — a name added or dropped here is a red test.</p>
  *
- * <p>Nothing here imports `vscode`: a consumer adapts its own `vscode` objects to `ConfigurationPort` and
- * `WebviewPort` (the shape is in `display/port.ts`'s docblock) and bundles this package with esbuild.</p>
+ * <p>Nothing here imports `vscode`: a consumer adapts its own `vscode` objects to `ConfigurationPort`,
+ * `WebviewPort` and `HelpPanelPort` (the shapes are in `display/port.ts`'s and `help/panel.ts`'s
+ * docblocks, and in the README) and bundles this package with esbuild. Not exported, on purpose: the help
+ * page's own chrome strings and section labels, the page script's pieces, the shared own-member reader,
+ * SHA-256 — internals a consumer has no call for, kept private so they can change.</p>
  */
 
 // display — configuration
@@ -64,8 +68,16 @@ export {
   type PushNotDelivered,
 } from './display/host';
 
-// settings — the "a view setting could not be saved" reporter the host reports through
+// settings — the "a view setting could not be saved" reporter the hosts report through
 export { settingWritten, type SettingNotSaved, type SettingReporter } from './settings/settingWritten';
+
+// text — text, whatever the caller actually had
+export { asText } from './text/asText';
+
+// webview — the escapers every page needs, the per-render nonce, the ordered write queue
+export { escapeHtml, escapeHtmlForHighlighting, jsonForScript } from './webview/escape';
+export { nonce } from './webview/nonce';
+export { WriteQueue } from './webview/writeQueue';
 
 // help — the catalog: articles, five languages, a visible fallback, and stale-translation detection
 export {
@@ -95,3 +107,9 @@ export {
   type MissingTranslation,
   type StaleTranslation,
 } from './help/coverage';
+
+// help — the page (pure, nonce injected), its message reader, and the panel behind its port
+export { articleHtml, helpCsp, renderHelpPage, searchIndex, type HelpAppendix, type HelpPageOptions, type SearchEntry } from './help/page';
+export { bodyHtml } from './help/pageText';
+export { readHelpMessage, type HelpAction, type HelpMessageReading, type HelpMessageRejection } from './help/messages';
+export { createHelpPanel, type HelpPanel, type HelpPanelOptions, type HelpPanelPort } from './help/panel';

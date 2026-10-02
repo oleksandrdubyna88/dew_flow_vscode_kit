@@ -91,3 +91,70 @@ test('src/test/ and the host allowlist are outside the scan, whether or not the 
   assert.equal(isPure('src/test/pageHarness.ts'), false);
   assert.equal(isPure('src/webview/nonce.ts'), false);
 });
+
+// ---------------------------------------------------------------------------------------------------
+// One hop away (E2.S3): the per-file scan above cannot see a pure-looking module that IMPORTS a host
+// module. The help page takes its nonce as a parameter precisely so that it stays pure; the panel, its host
+// half, mints one. So the page modules' whole runtime import closure must stay clear of the host allowlist
+// — and the panel's must reach it, which is the known instance that keeps this check from passing vacuously.
+// ---------------------------------------------------------------------------------------------------
+
+/** The modules a webview page is rendered by: nothing in their closure may reach a host module. */
+const PAGE_MODULES: readonly string[] = ['src/help/page.ts', 'src/help/messages.ts', 'src/display/zoom.ts', 'src/display/tone.ts', 'src/display/press.ts'];
+
+/**
+ * The relative modules a file imports at RUN time, as `src/...` paths. A whole statement is matched across
+ * lines (a multi-line `import {` is the common shape); `import type` and `export type` are erased by the
+ * compiler and bring nothing, so they are skipped.
+ */
+function runtimeImportsOf(file: string, text: string): string[] {
+  const statements = text.matchAll(/^\s*(?:import|export)\s+(type\s+)?[^;]*?\bfrom\s+['"](\.{1,2}\/[^'"]+)['"]/gms);
+
+  return [...statements]
+    .filter(([, typeOnly]) => typeOnly === undefined)
+    .map(([, , target]) => fromRoot(path.resolve(path.dirname(path.join(path.dirname(SRC), file)), `${target ?? ''}.ts`)));
+}
+
+/** Every module reachable from `start` through run-time imports, `start` included. */
+function closureOf(start: string): Set<string> {
+  const seen = new Set<string>();
+  const visit = (file: string): void => {
+    if (seen.has(file)) {
+      return;
+    }
+    seen.add(file);
+    runtimeImportsOf(file, fs.readFileSync(path.join(path.dirname(SRC), file), 'utf8')).forEach(visit);
+  };
+  visit(start);
+
+  return seen;
+}
+
+test('no module a page is rendered by reaches a host module through its imports — the nonce stays a parameter', () => {
+  const findings = PAGE_MODULES.flatMap((module) =>
+    [...closureOf(module)].filter((file) => HOST_ALLOWLIST.includes(file)).map((file) => `${module} reaches ${file}`),
+  );
+
+  assert.deepEqual(findings, [], findings.join('\n'));
+  assert.ok(closureOf('src/help/page.ts').has('src/help/catalog.ts'), 'the walk did not follow page.ts into the catalog');
+});
+
+test('the closure walk finds the known host reach: the panel mints its nonce, and the index re-exports it', () => {
+  assert.ok(closureOf('src/help/panel.ts').has('src/webview/nonce.ts'));
+  assert.ok(closureOf('src/index.ts').has('src/webview/nonce.ts'));
+});
+
+test('the import reader takes multi-line, export-from and relative-parent imports, and skips type-only ones', () => {
+  const fixture = [
+    "import { a } from './a';",
+    'import {',
+    '  b,',
+    "} from '../b';",
+    "import type { C } from './c';",
+    "export { d } from './d';",
+    "export type { E } from './e';",
+    "import * as fs from 'node:fs';",
+  ].join('\n');
+
+  assert.deepEqual(runtimeImportsOf('src/help/x.ts', fixture), ['src/help/a.ts', 'src/b.ts', 'src/help/d.ts']);
+});

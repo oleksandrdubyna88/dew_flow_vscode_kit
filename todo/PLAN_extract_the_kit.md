@@ -1,7 +1,7 @@
 # PLAN — extract the help / text-size / text-tone / setting-write modules into one shared package
 
-> Status: **in progress, 2026-10-02** — epic 1, E2.S1 and E2.S2 have landed on their branches; E2.S3,
-> epic 3 and the consumer switches are open. Scope: this repository's first release,
+> Status: **in progress, 2026-10-02** — epic 1 and epic 2 (E2.S1, E2.S2, E2.S3) have landed on their
+> branches; epic 2's code round, epic 3 and the consumer switches are open. Scope: this repository's first release,
 > `@oleksandrdubyna88/vscode-webview-kit` 0.1.0, and the switch of its two consumers.
 >
 > Cross-repository: the consumer side is named in `wsl_care · todo/PLAN_shared_vscode_kit.md` (the
@@ -215,6 +215,33 @@ webview→host trust boundary, publishing credentials).
   config with an injected nonce and appendix, with teeth; the page script RUN (index ↔ article, search,
   `noHits`, Back, Escape, language post); the panel with fakes (unknown type ignored, a language outside
   the list not written, re-render on change, dispose unhooks all listeners); `assertNoCr`.
+  *As built:* the page is three files under the linter's limits — `page.ts` (`renderHelpPage`, `searchIndex`,
+  `articleHtml`, `helpCsp`), `pageText.ts` (coai's chrome and section labels, `bodyHtml`, the notes) and
+  `pageScript.ts` (coai's script in three pieces) — plus `messages.ts` (`readHelpMessage`), and
+  `src/webview/posted.ts`, the own-member reader extracted from `display/press.ts` so both readers share it.
+  The appendix hook is `(id, language) => string`, the consumer's own escaped markup, inserted as is.
+  Byte-compat is held against seven whole pages recorded from coai's real `helpPage.ts` by
+  `scripts/record-coai-help-page.mjs`: coai's `HELP_ARTICLES` export is reassigned to synthetic articles
+  (recorded as input), the nonce is read back from each page, and coai's private `promptsHtml()` output is
+  recovered as the difference between the `prompts-in-full` article and a twin; `coai-modules.mjs` gained
+  `--typeRoots` because coai's page imports `node:crypto`. Deviations from coai's page, each silent for coai's
+  bootstrapped catalog: the language switch lists `catalog.languages` rather than all five; a nonce shorter
+  than 22 base64 characters and a language the catalog does not offer are refused with a `TypeError`; a
+  `stale` or `unknown` translation carries `<p class="fallback stale">` with a sentence per language, and a
+  fresh one carries nothing. The panel takes the consumer's ONE `DisplayHost` (which gained a `readonly
+  config`) instead of making its own, so a help page is attached like any other page; `HelpPanelPort` is
+  `WebviewPort` plus `setHtml` and `onDidReceiveMessage`; creating the `WebviewPanel` and the reveal-if-open
+  singleton stay with the consumer (README "Use"). Deviations from coai's panel: a language is validated
+  against `catalog.languages`, not all five; an unknown type is refused with a typed reason instead of being
+  ignored silently; a stored language without a module reads as English; it renders before it attaches (coai's
+  order, now pinned by a test); `render` / `handle` throw after dispose. `src/index.ts` exports the whole 0.1.0
+  API — `text` and `webview` included — pinned name by name by `exports.test.ts`. Two more controls were
+  added: the architecture test walks run-time import closures (no page module reaches `nonce.ts`), and
+  `scriptInterpolation.test.ts` scans for an interpolated `JSON.stringify`. **`help-digests` ships**
+  (coordinator's decision): `files` and `bin` (`vscode-webview-kit-help-digests`); its default `--kit` was
+  already resolved from the script's own location, and `packaging.test.ts` runs it from a hand-built installed
+  layout — a real `npm install` of the packed tarball is left to E3.S1's consumer fixture. The pageHarness
+  gained event bubbling, `fire`, `value`, node-level `querySelectorAll`, `keydown` and `scrollTo`.
 
 **Epic 2 plan round (session `ba62c9e9`, 2026-10-02):**
 

@@ -1,9 +1,9 @@
 # Architecture — dew_flow_vscode_kit
 
 > Being built along [../todo/PLAN_extract_the_kit.md](../todo/PLAN_extract_the_kit.md): epic 1 (the
-> machinery and the pure modules), E2.S1 (the display host) and E2.S2 (the help catalog, its digest and
-> coverage checks) have landed; the help page and panel (E2.S3) and the release pipeline (epic 3) have
-> not. This file describes what exists and is rewritten as each module lands.
+> machinery and the pure modules) and epic 2 (the display host, the help catalog, and the help page and
+> panel) have landed; the release pipeline (epic 3) has not, so nothing is published yet. This file
+> describes what exists and is rewritten as each module lands.
 
 ## What this package is
 
@@ -12,20 +12,23 @@ of copying. Pure modules render strings from values and are tested as functions;
 strings a webview runs and are tested by RUNNING them; the few host modules take a narrow port instead
 of the `vscode` namespace and are tested with a fake stricter than the real API. Nothing in `src/`
 imports `vscode` — `src/test/architecture.test.ts` fails the build if a pure module does, and the only
-`node:` import outside the tests is `src/webview/nonce.ts` (`node:crypto`).
+`node:` import outside the tests is `src/webview/nonce.ts` (`node:crypto`). Since E2.S3 the same test also
+walks run-time import CLOSURES: no module a page is rendered by may reach `nonce.ts` even one hop away,
+while the help panel — the host half that mints a nonce per render — must.
 
 ## Module map
 
 | Module | Files | Status |
 |---|---|---|
 | `text` | `asText.ts` | landed (E1.S2) |
-| `webview` | `escape.ts` (`escapeHtml`, `escapeHtmlForHighlighting`, `jsonForScript`), `nonce.ts`, `writeQueue.ts` | landed (E1.S2) |
+| `webview` | `escape.ts` (`escapeHtml`, `escapeHtmlForHighlighting`, `jsonForScript`), `nonce.ts`, `writeQueue.ts`; `posted.ts` — a posted message read as own members only, shared by both message readers | landed (E1.S2; `posted.ts` E2.S3) |
 | `settings` | `settingWritten.ts` — the "a view setting could not be saved" reporter, consumer funnel injected | landed (E1.S2) |
 | `display` — pure halves | `config.ts` (`createDisplayConfig`, prefix validation), `zoom.ts`, `tone.ts`, `messages.ts` | landed (E1.S3; `messages.ts` E2.S1) |
 | `display` — host | `port.ts` (`ConfigurationPort`, `WebviewPort`), `press.ts` (`readPress`), `host.ts` (`createDisplayHost`) | landed (E2.S1) |
 | `help` — catalog | `types.ts`, `sha256.ts`, `digest.ts` (`digestOf`), `catalog.ts` (`createCatalog`, `bodyFor`), `bootstrap.ts` (`stampTranslations`), `coverage.ts` (`staleTranslations`, `everyArticleInEveryLanguage`) | landed (E2.S2) |
-| `help` — page, panel | `page.ts`, `panel.ts` | not built (E2.S3) |
-| package entry | `src/index.ts` — exports `display`, `settings` and the help catalog; `text`, `webview` and the help page and panel follow in E2.S3 | partial |
+| `help` — page, panel | `page.ts` (`renderHelpPage`, `searchIndex`, `articleHtml`, `helpCsp`), `pageText.ts` (chrome, section labels, `bodyHtml`, the notes), `pageScript.ts` (the one `<script>`), `messages.ts` (`readHelpMessage`), `panel.ts` (`createHelpPanel`, `HelpPanelPort`) | landed (E2.S3) |
+| package entry | `src/index.ts` — the whole 0.1.0 API: `display`, `settings`, `text`, `webview`, the help catalog, page, message reader and panel; pinned name by name by `src/test/exports.test.ts` | landed (E2.S3) |
+| bin | `scripts/help-digests.mjs`, shipped as `vscode-webview-kit-help-digests` (`package.json` `bin` and `files`) | landed (E2.S2; shipped E2.S3) |
 
 ## The display module
 
@@ -178,10 +181,99 @@ shipped translations match today's English, and the result pasted into its modul
 would switch stale detection off. After a deliberate re-translation, `scripts/help-digests.mjs <compiled
 catalog module> [--export name] [--kit entry]` re-makes the catalog with the kit's own `createCatalog`,
 prints exactly `staleTranslations`' pairs grouped by language with the replacement `from` line for each,
-and exits 1 (0 when nothing is stale, 2 on a usage, load or validation error). It is in this repository
-only for now: `package.json` `files` is still `["dist"]`, so shipping it to consumers is open (E2.S3 or E3).
+and exits 1 (0 when nothing is stale, 2 on a usage, load or validation error). Since E2.S3 it ships:
+`package.json` lists it in `files` and as the bin `vscode-webview-kit-help-digests`, and its default
+`--kit` is the package's own `dist/index.js` resolved from the script's location (`import.meta.url`),
+never from the cwd — so the installed bin uses the kit it was installed with.
 
 **Growth:** none. The catalog is made once from the consumer's constants; nothing is cached or kept.
+
+## The help module — the page and the panel (E2.S3)
+
+The page is PURE: `renderHelpPage({ catalog, language, display, nonce, uiScale?, textTone?, appendix? })`
+returns the whole HTML document as a string, and every input is handed in — the nonce included, which the
+host mints per render. The panel is the HOST half, behind a fourth port, `HelpPanelPort`: the consumer
+creates the `WebviewPanel` (that needs `vscode.window`) and adapts it in four lines.
+
+```mermaid
+flowchart TB
+  subgraph consumer["Consumer extension — the only code that imports vscode"]
+    wv["vscode.WebviewPanel"]
+    port["HelpPanelPort adapter: setHtml, postMessage, onDidReceiveMessage, onDidDispose"]
+    cfg["ConfigurationPort adapter"]
+    dhost["its ONE display host"]
+  end
+  subgraph kit["Kit — src/help, no vscode import"]
+    panel["createHelpPanel: render on open and on a language change; four hooks; dispose unhooks all"]
+    read["readHelpMessage: a press, or a language the catalog offers; anything else refused with a reason"]
+    page["renderHelpPage: pure, nonce injected, CSP, index, articles, notes, appendix"]
+    script["pageScript: the one script under the nonce: routing, search, language select"]
+    nonce["webview/nonce: 16 random bytes per render, host-only"]
+    queue["WriteQueue for the language setting"]
+  end
+  wv --- port
+  port -- "message the page posted" --> panel
+  panel --> read
+  read -- "press" --> dhost
+  read -- "language" --> queue
+  queue -- "write helpLanguage at user scope" --> cfg
+  cfg -- "onDidChange helpLanguage" --> panel
+  panel -- "render" --> page
+  nonce -- "nonce" --> panel
+  page --> script
+  panel -- "setHtml" --> port
+  dhost -- "uiScale / textTone pushed live" --> port
+```
+
+**Byte-compatibility.** For coai's configuration (`ConnectOtherAIs`, prefix `coai`), the same nonce and the
+same appendix, `renderHelpPage` returns the bytes coai's `renderHelpHtml` returned at `1056aed9` — for every
+language, at the theme's own size and tone and at two off-centre pairs — and `searchIndex`, `articleHtml`
+and `bodyHtml` equal coai's for every recorded input. The pages are RECORDED from coai's real `helpPage.ts`
+by `scripts/record-coai-help-page.mjs` into `src/test/fixtures/coai-help-page-1056aed9.json`: coai's engine,
+escapers and display controls compiled as they are, its `HELP_ARTICLES` export reassigned to small
+synthetic articles (recorded as input), its four translation modules and `helpPrompts.ts` replaced by small
+files, and the nonce read back from each page it rendered. coai's appendix — the private `promptsHtml()` it
+put inside the `prompts-in-full` article — is recovered from coai's own output as the difference between that
+article and a twin with the same body under another id, and the recorder refuses unless both renders
+reassemble from it. A consumer's appendix is its own escaped markup, inserted as is.
+
+**The CSP and what is checked at the door.** The policy is coai's, byte for byte:
+`default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-…';`. `default-src 'none'` means no image,
+font, frame, connection or form reaches anywhere; scripts run only under the per-render nonce, and the page
+has exactly one script and no inline handler. `style-src 'unsafe-inline'` is kept because the page's own
+`<style>` carries only the kit's constants and two clamped numbers — never a consumer's or a reader's text —
+and dropping it would break byte-compatibility for no gain. Two inputs reach an attribute unescaped and are
+therefore checked: the nonce must be at least 22 base64 characters (128 bits, the CSP specification's
+floor; what `nonce()` mints passes), and the language must be one of `catalog.languages`. Article text is
+escaped before any markup of ours is added; data reaches the script only through `jsonForScript`, which
+`src/test/scriptInterpolation.test.ts` enforces by scanning every shipped source for an interpolated
+`JSON.stringify`.
+
+**What the kit adds to coai's page.** The language switch lists `catalog.languages` — English and the
+languages with a module (all five for coai) — instead of all five unconditionally. A translation `bodyFor`
+answers as `stale` or `unknown` carries a note where the fallback note goes, in the help's language
+(`<p class="fallback stale">`, so the stylesheet is unchanged); a fresh catalog renders no note at all, which
+is what keeps coai's bootstrapped catalog byte-identical. A fallback is never stale: it IS the current
+English.
+
+**The trust boundary, help side** (`messages.ts`). `readHelpMessage(message, catalog.languages)` reads own
+members only (`webview/posted.ts`, shared with `display/press.ts` so the rule lives once), hands `zoom` /
+`tone` to `readPress` unchanged, and accepts `language` only as a string the catalog offers with a `field`
+absent or empty. Everything else comes back as `{ accepted: false, reason }` — `not-an-object`,
+`unknown-type`, `language-not-offered`, `field`, or a press reason — and the reader never throws. coai checked
+the language against all five and ignored other types silently; the kit narrows the first and names the second.
+
+**The panel** (`panel.ts`). `createHelpPanel` renders first, then makes four hooks: the display attachment
+(the consumer's display host pushes size and tone to this page like any other), the language setting's
+change listener (re-render), the port's message listener, and the port's dispose event. A press goes to
+`display.apply`, which writes once and pushes the new value live — a size change never re-renders, so the
+reader keeps their place; a language goes through the panel's own `WriteQueue` and `settingWritten` with the
+consumer's `settingNotSaved` funnel, naming `help`. The stored language reads as English when it is junk or
+a language the catalog has no module for. `dispose()` — or the panel closing — unhooks all four and leaves
+the consumer's display host alone; `render` and `handle` throw afterwards, and a pending write still lands.
+
+**Growth** (plan §5): one panel holds four hooks and one write queue as long as the language writes not yet
+done; a closed panel holds nothing.
 
 ## The test harness
 
@@ -191,13 +283,15 @@ catalogue, and what the suite does not prove.
 ## Repository machinery
 
 - `package.json` (`@oleksandrdubyna88/vscode-webview-kit` 0.1.0, CommonJS, `main`/`types`/`exports` into
-  `dist/`, `files: ["dist"]`, no `dependencies`), `tsconfig.json` (coai's strict set, ES2022 without DOM,
+  `dist/`, `files: ["dist", "scripts/help-digests.mjs"]`, the bin `vscode-webview-kit-help-digests`, no
+  `dependencies`), `tsconfig.json` (coai's strict set, ES2022 without DOM,
   `noEmitOnError`), `tsconfig.build.json` (declarations into `dist/`, tests excluded), `eslint.config.mjs`
   (type-aware, `complexity 4` / `max-lines-per-function 50` on `src/**`, `linebreak-style unix`),
-  `scripts/run-tests.mjs` (readdir discovery, `node --test`), `scripts/clean.mjs`, the two coai
-  recorders `scripts/record-coai-display.mjs` and `scripts/record-coai-help.mjs` over their shared
-  `scripts/coai-modules.mjs` (extract coai sources at a ref, compile them, load them), and
-  `scripts/help-digests.mjs`.
+  `scripts/run-tests.mjs` (readdir discovery, `node --test`), `scripts/clean.mjs`, the three coai
+  recorders `scripts/record-coai-display.mjs`, `scripts/record-coai-help.mjs` and
+  `scripts/record-coai-help-page.mjs` over their shared `scripts/coai-modules.mjs` (extract coai sources at a
+  ref, compile them with this repository's `@types` — coai's `helpPage.ts` imports `node:crypto` — and load
+  them), and `scripts/help-digests.mjs`.
 - **CI:** `.github/workflows/ci.yml` runs the whole chain — conventions check, plan lifecycle, typecheck,
   lint, test, build, `npm pack --dry-run` — on `ubuntu-latest` AND `windows-latest`, every action pinned to a
   commit SHA; `pr-title.yml`, `coderabbit-review.yml` + `.coderabbit.yaml`, `dependabot.yml`.
@@ -208,5 +302,5 @@ catalogue, and what the suite does not prove.
 
 | Repository | Uses | Since |
 |---|---|---|
-| `dew_flow_connect_other_ais` | the source of the extracted modules (`src_vs_code/src` at `1056aed9`); switches to the package in its own PR, adapting `vscode.workspace` and each panel to the two ports | planned |
+| `dew_flow_connect_other_ais` | the source of the extracted modules (`src_vs_code/src` at `1056aed9`); switches to the package in its own PR, adapting `vscode.workspace` and each panel to the ports (`ConfigurationPort`, `WebviewPort`, `HelpPanelPort` for the help panel) and passing its prompt listing as the help page's appendix | planned |
 | `wsl_care` | the help page and display controls of its extension | planned |

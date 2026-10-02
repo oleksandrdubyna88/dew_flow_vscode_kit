@@ -18,16 +18,23 @@ import { createContext, runInContext, Script, type Context } from 'node:vm';
  * that reaches for one meets a `ReferenceError`, which is also what a webview would answer.</p>
  *
  * <p><b>Deadline.</b> The script runs under `timeout: 5000`, and so does every event the test dispatches
- * into it afterwards — a click, a message — because a defective generator's `while (true) {}` is as
- * likely to live in a handler as at the top level, and an unbounded run does not fail, it hangs the
+ * into it afterwards — a click, a message, a key — because a defective generator's `while (true) {}` is
+ * as likely to live in a handler as at the top level, and an unbounded run does not fail, it hangs the
  * suite. A handler is reached through a trampoline run in the same context with the same deadline.</p>
  *
  * <p><b>Stricter than a browser, never more permissive.</b> `querySelector` and `getElementById` answer
  * `null` for a miss, never `undefined` — every `!== null` guard in a page depends on it. A node the page
- * was never handed cannot be clicked. `closest` understands the two selector shapes the pages use and
- * REFUSES any other, rather than answering `null` and letting a guard pass. What a page posts must be
- * structured-cloneable, as it must be for a real `postMessage`; the copy also brings each message into
- * this realm, so `assert.deepEqual` compares values rather than two realms' `Object.prototype`.</p>
+ * was never handed cannot be clicked. Selectors are the shapes the pages use — `[data-x]`,
+ * `[data-x="y"]`, each optionally behind a tag name — and any other shape is REFUSED rather than
+ * answered with `null`, which would let a page's guard pass against an element it never found. What a
+ * page posts must be structured-cloneable, as it must be for a real `postMessage`; the copy also brings
+ * each message into this realm, so `assert.deepEqual` compares values rather than two realms'
+ * `Object.prototype`.</p>
+ *
+ * <p><b>Events bubble</b> (E2.S3): an event fired on a node runs that node's listeners of its kind, then
+ * each ancestor's up the `under()` chain, then the document's — the help page listens for a click on
+ * the whole index and finds the item with `closest`, which a shim that stopped at the element could not
+ * drive.</p>
  */
 
 const TIMEOUT_MS = 5000;
@@ -39,10 +46,37 @@ interface Listener {
   readonly run: Handler;
 }
 
-/** What `runPageScript` hands every node it is given: the deadline, and the document's click listeners. */
+/** What `runPageScript` hands every node it is given: the deadline, and the document's listeners. */
 interface Wiring {
   bounded(run: () => void): void;
-  documentClick(node: Node): void;
+  documentDispatch(kind: string, event: Record<string, unknown>): void;
+}
+
+/** One of the selector shapes the pages use, parsed: an optional tag, the data key, an optional exact value. */
+interface Selector {
+  readonly tag: string | undefined;
+  readonly key: string;
+  readonly value: string | undefined;
+}
+
+/**
+ * The selector shapes this shim reads: `[data-x]`, `[data-x="y"]`, each optionally behind a tag name
+ * (`li[data-open]`). Any other shape is refused by `what`, naming the selector.
+ */
+function selectorOf(selector: string, what: string): Selector {
+  const found = /^(?:([a-z][a-z0-9]*))?\[data-([a-z][a-z0-9-]*)(?:="([^"]*)")?\]$/.exec(selector);
+  assert.ok(found !== null, `${what}(${JSON.stringify(selector)}): this harness reads only [data-x] and [data-x="y"], optionally behind a tag name`);
+
+  return { tag: found[1]?.toUpperCase(), key: camel(found[2] ?? ''), value: found[3] };
+}
+
+/** Whether a node is what the selector names: the data key present, the value equal when given, the tag equal when given. */
+function matches(node: Node, selector: Selector): boolean {
+  const held = node.dataset[selector.key];
+
+  return held !== undefined
+    && (selector.value === undefined || held === selector.value)
+    && (selector.tag === undefined || node.tagName === selector.tag);
 }
 
 /**
@@ -97,7 +131,7 @@ export class ClassList {
   }
 }
 
-/** Just enough of an element for the pages' own `closest`, `dataset`, class, text and style writes. */
+/** Just enough of an element for the pages' own `closest`, `querySelectorAll`, `dataset`, class, text, value and style writes. */
 export class Node {
   readonly dataset: Record<string, string>;
   readonly tagName: string;
@@ -107,9 +141,13 @@ export class Node {
   readonly attributes: Record<string, string> = {};
   textContent = '';
   innerHTML = '';
+  /** An input's or select's value — what a page reads on `input` / `change`, and what a test sets before firing one. */
+  value = '';
   hidden = false;
   readonly style = new Style();
   parent: Node | undefined = undefined;
+  /** The nodes placed under this one with `under()`, in document order. */
+  readonly children: Node[] = [];
   /** The kinds of the listeners a page bound here, in order — what a test asserts a control was wired with. */
   readonly listeners: string[] = [];
   private readonly handlers: Listener[] = [];
@@ -125,46 +163,54 @@ export class Node {
     this.handlers.push({ kind, run });
   }
 
-  /**
-   * A click: this element's own click listeners first, then the document's, as a browser bubbles it —
-   * under the page's deadline. A node the running page was never handed has nowhere to bubble to, and
-   * says so rather than doing nothing.
-   */
+  /** A click, as {@link fire} dispatches one. */
   click(): void {
-    const wiring = this.wiring;
-    assert.ok(wiring !== undefined, `this ${this.tagName} was clicked but is not in the running page`);
-    wiring.bounded(() => {
-      const event = { target: this, currentTarget: this, preventDefault: (): void => undefined };
-      for (const handler of this.handlers) {
-        if (handler.kind === 'click') {
-          handler.run(event);
-        }
-      }
-      wiring.documentClick(this);
-    });
+    this.fire('click');
   }
 
   /**
-   * The chain upwards from this node, matching `[data-x]` and `[data-x="y"]` — the two shapes the pages
-   * use. Any other selector is refused: a `null` for a shape this shim cannot read would let a page's
-   * guard pass against an element it never found.
+   * Dispatch an event of `kind` here: this element's own listeners of that kind, then each ancestor's up
+   * the `under()` chain, then the document's — as a browser bubbles it — under the page's deadline, with
+   * `init`'s members on the event. A node the running page was never handed has nowhere to bubble to,
+   * and says so rather than doing nothing.
    */
+  fire(kind: string, init: Record<string, unknown> = {}): void {
+    const wiring = this.wiring;
+    assert.ok(wiring !== undefined, `this ${this.tagName} was fired ${kind} but is not in the running page`);
+    wiring.bounded(() => {
+      // Bubbling walks up from this node: the loop variable starts at `this`, as in `closest`.
+      // eslint-disable-next-line @typescript-eslint/no-this-alias -- deliberate, see above
+      for (let at: Node | undefined = this; at !== undefined; at = at.parent) {
+        at.run(kind, { ...init, target: this, currentTarget: at, preventDefault: (): void => undefined });
+      }
+      wiring.documentDispatch(kind, { ...init, target: this });
+    });
+  }
+
+  /** The chain upwards from this node, including itself, matching one of the selector shapes this shim reads. */
   closest(selector: string): Node | null {
-    const exact = /^\[data-([a-z][a-z0-9-]*)="([^"]*)"\]$/.exec(selector);
-    const any = /^\[data-([a-z][a-z0-9-]*)\]$/.exec(selector);
-    const found = exact ?? any;
-    assert.ok(found !== null, `closest(${JSON.stringify(selector)}): this harness reads only [data-x] and [data-x="y"]`);
-    const key = camel(found[1] ?? '');
+    const wanted = selectorOf(selector, 'closest');
     // Walking up a DOM chain from this node IS the operation: the loop variable starts at `this`.
     // eslint-disable-next-line @typescript-eslint/no-this-alias -- deliberate, see above
     for (let at: Node | undefined = this; at !== undefined; at = at.parent) {
-      const held = at.dataset[key];
-      if (held !== undefined && (exact === null || held === exact[2])) {
+      if (matches(at, wanted)) {
         return at;
       }
     }
 
     return null;
+  }
+
+  /** Every node under this one that matches — children, their children, and so on — in document order. */
+  querySelectorAll(selector: string): Node[] {
+    const wanted = selectorOf(selector, 'querySelectorAll');
+
+    return descendantsOf(this).filter((node) => matches(node, wanted));
+  }
+
+  /** The first node under this one that matches, or `null`. */
+  querySelector(selector: string): Node | null {
+    return this.querySelectorAll(selector)[0] ?? null;
   }
 
   setAttribute(name: string, value: string): void {
@@ -174,6 +220,7 @@ export class Node {
   /** Places this node under `parent` and returns it, so a tree reads as one expression in a test. */
   under(parent: Node): Node {
     this.parent = parent;
+    parent.children.push(this);
 
     return this;
   }
@@ -183,6 +230,20 @@ export class Node {
     assert.ok(this.wiring === undefined, `this ${this.tagName} was handed to two pages`);
     this.wiring = wiring;
   }
+
+  /** This node's own listeners of `kind`, in the order they were added. */
+  run(kind: string, event: unknown): void {
+    for (const handler of this.handlers) {
+      if (handler.kind === kind) {
+        handler.run(event);
+      }
+    }
+  }
+}
+
+/** The nodes under `node`, depth first, in document order — `node` itself excluded, as `querySelectorAll` excludes it. */
+function descendantsOf(node: Node): Node[] {
+  return node.children.flatMap((child) => [child, ...descendantsOf(child)]);
 }
 
 /** `data-remove-prompt` reaches a script as `dataset.removePrompt`, as a browser spells it. */
@@ -190,12 +251,16 @@ export function camel(attribute: string): string {
   return attribute.replace(/-([a-z])/g, (_all, letter: string) => letter.toUpperCase());
 }
 
-/** What the running page offers a test: what it posted, the host's voice, and the two styled roots. */
+/** What the running page offers a test: what it posted, the host's voice, the keyboard, and the two styled roots. */
 export interface Page {
   /** Every message the page posted, each copied into this realm. */
   readonly posted: readonly unknown[];
   /** A message from the host, delivered to every `window` message listener as `{ data }`. */
   message(data: unknown): void;
+  /** A key pressed on the page, delivered to the document's `keydown` listeners as `{ key }`. */
+  keydown(key: string): void;
+  /** Every `window.scrollTo(x, y)` the page made, in order. */
+  readonly scrolledTo: readonly (readonly [number, number])[];
   /** `document.body` — where the text size and tone are written. */
   readonly body: Node;
   /** `document.documentElement` — the root, which `rem` is measured from. */
@@ -225,7 +290,8 @@ function runBounded(context: Context, sandbox: Record<string, unknown>, run: () 
  * page asks for; `ids` are what `document.getElementById` answers with. A test that presses a button
  * needs the page to FIND it, and a shim that answered every selector with a stand-in would let a broken
  * wiring look exactly like a working one — so a selector or id the test did not hand in answers with
- * nothing, as a browser answers for an element that is not on the page.</p>
+ * nothing, as a browser answers for an element that is not on the page. Every node reachable from one
+ * the test handed in — its ancestors and descendants through `under()` — is wired to the page too.</p>
  */
 export function runPageScript(
   script: string,
@@ -233,6 +299,7 @@ export function runPageScript(
   ids: Readonly<Record<string, Node>> = {},
 ): Page {
   const posted: unknown[] = [];
+  const scrolledTo: (readonly [number, number])[] = [];
   const documentListeners: Listener[] = [];
   const windowListeners: Listener[] = [];
   const root = new Node({}, 'HTML');
@@ -249,6 +316,7 @@ export function runPageScript(
     },
     window: {
       addEventListener: (kind: string, run: Handler): void => { windowListeners.push({ kind, run }); },
+      scrollTo: (x: number, y: number): void => { scrolledTo.push([x, y]); },
     },
     acquireVsCodeApi: () => ({
       postMessage: (message: unknown): void => { posted.push(structuredClone(message)); },
@@ -257,16 +325,16 @@ export function runPageScript(
   const context = createContext(sandbox);
   const wiring: Wiring = {
     bounded: (run) => { runBounded(context, sandbox, run); },
-    documentClick: (node) => {
-      const event = { target: node, preventDefault: (): void => undefined };
+    documentDispatch: (kind, event) => {
+      const seen = { ...event, preventDefault: (): void => undefined };
       for (const listener of documentListeners) {
-        if (listener.kind === 'click') {
-          listener.run(event);
+        if (listener.kind === kind) {
+          listener.run(seen);
         }
       }
     },
   };
-  for (const node of [root, body, ...Object.values(ids), ...Object.values(nodes).flat()]) {
+  for (const node of reachable([root, ...Object.values(ids), ...Object.values(nodes).flat()])) {
     node.wire(wiring);
   }
 
@@ -274,6 +342,7 @@ export function runPageScript(
 
   return {
     posted,
+    scrolledTo,
     message: (data) => {
       wiring.bounded(() => {
         for (const listener of windowListeners) {
@@ -283,7 +352,28 @@ export function runPageScript(
         }
       });
     },
+    keydown: (key) => {
+      wiring.bounded(() => { wiring.documentDispatch('keydown', { key, target: body }); });
+    },
     body,
     root,
   };
+}
+
+/** Every node connected to the given ones through `under()` — up to each root and down to every leaf — once each. */
+function reachable(given: readonly Node[]): Node[] {
+  const seen = new Set<Node>();
+  const visit = (node: Node): void => {
+    if (seen.has(node)) {
+      return;
+    }
+    seen.add(node);
+    if (node.parent !== undefined) {
+      visit(node.parent);
+    }
+    node.children.forEach(visit);
+  };
+  given.forEach(visit);
+
+  return [...seen];
 }

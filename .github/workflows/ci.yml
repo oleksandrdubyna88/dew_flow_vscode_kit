@@ -1,0 +1,76 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: build · test · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      # THE WHOLE SUITE ON BOTH PLATFORMS, unfiltered (common.platform-limits § 2). The package ships one
+      # artefact that two extensions bundle on Windows, Linux and macOS alike; its byte-compat tests hold
+      # rendered output against literals, and a CR a Windows checkout smuggled in would pass on one runner
+      # and fail on the other. There is no path filter, because every file here can affect the one build.
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      # BEFORE the checkout: a Windows runner's git converts to CRLF on checkout by default, and
+      # `linebreak-style: unix` plus the CR-free assertions would then be red for a reason that has nothing
+      # to do with the change. `.gitattributes` forces LF too; this makes the runner agree with it.
+      - name: LF on every platform
+        run: git config --global core.autocrlf false
+
+      # Pinned to a commit, not a tag: a tag can be moved under you. Dependabot keeps the comment current.
+      # `submodules: true` brings the conventions submodule at the pinned commit, which `rules.mjs check`
+      # then verifies — never `recursive`.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      # One command per step rather than a multi-line `run:` — on Windows the step shell is pwsh, which
+      # reports only the LAST native command's exit code, so a failed first line would pass unnoticed.
+      - name: Shared instruction dependencies
+        run: npm ci --ignore-scripts --prefix .agents/conventions
+
+      - name: Rules pin verification
+        run: node .agents/conventions/tools/rules.mjs check --repo .
+
+      - name: Plan lifecycle
+        run: node .agents/conventions/tools/plan-lifecycle.mjs
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      # What a publish would contain, read before any publish exists: `files: ["dist"]` and nothing else.
+      - name: Pack
+        run: npm pack --dry-run

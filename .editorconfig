@@ -1,0 +1,15 @@
+# The formatting this repository follows, written down so an editor and a tool read the same rules.
+# LF everywhere: the suite runs on Windows and Linux and compares rendered bytes.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.md]
+# Two trailing spaces are a hard line break in markdown; trimming them changes the rendering.
+trim_trailing_whitespace = false

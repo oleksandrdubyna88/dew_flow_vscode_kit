@@ -1,0 +1,11 @@
+{
+  // What `npm run build` publishes: the same strict set, CommonJS + `.d.ts` into `dist/`, tests left out.
+  // No source maps — `files: ["dist"]` ships no `src/`, so a map would point at nothing.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "declaration": true,
+    "sourceMap": false
+  },
+  "exclude": ["node_modules", "out", "dist", "src/test"]
+}

@@ -1,0 +1,44 @@
+{
+  "name": "@oleksandrdubyna88/vscode-webview-kit",
+  "version": "0.1.0",
+  "description": "Shared webview building blocks for the dew_flow VS Code extensions: a help page with languages and stale-translation detection, the ± text size and ± text tone controls with their host halves, the setting-write reporter, and the HTML/JSON escapers a webview page needs.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/oleksandrdubyna88/dew_flow_vscode_kit"
+  },
+  "type": "commonjs",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "compile": "node scripts/clean.mjs out && tsc -p tsconfig.json",
+    "test": "npm run compile && node scripts/run-tests.mjs",
+    "build": "node scripts/clean.mjs dist && tsc -p tsconfig.build.json",
+    "lint": "eslint .",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.2",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.11.0",
+    "globals": "^17.12.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "^8.70.0"
+  }
+}

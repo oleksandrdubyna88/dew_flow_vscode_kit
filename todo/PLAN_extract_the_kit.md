@@ -64,8 +64,8 @@ normalisation; the digest is the first 8 hex characters of SHA-256 over those by
 **Where a translation keeps it:** each translation module exports `{ bodies, from }` — `bodies` maps an
 article id to its translated `HelpBody`, `from` maps the same id to the digest of the ENGLISH body it was
 translated from. `bodyFor` answers `{ body, fallback, stale }`: `fallback` when the language has no body
-for the article, `stale` when it has one whose `from` differs from the current English digest — or has
-no `from` entry at all, which is reported as stale rather than assumed fresh. **Bootstrap:** the coai
+for the article, `stale: 'stale'` when it has one whose `from` differs from the current English digest,
+and `stale: 'unknown'` when it has no `from` entry at all — never assumed fresh. **Bootstrap:** the coai
 switch stamps the CURRENT English digests for every existing translation, on the stated assumption that
 the shipped translations match today's English; a `help-digests` script prints the digests to paste
 after a deliberate re-translation.
@@ -185,6 +185,14 @@ webview→host trust boundary, publishing credentials).
   config with an injected nonce and appendix, with teeth; the page script RUN (index ↔ article, search,
   `noHits`, Back, Escape, language post); the panel with fakes (unknown type ignored, a language outside
   the list not written, re-render on change, dispose unhooks all listeners); `assertNoCr`.
+
+**Epic 2 plan round (session `ba62c9e9`, 2026-10-02):**
+
+| # | Lands in | Decision |
+|---|---|---|
+| 0 | E2.S2 | **Accepted, changed.** A stale translation is the intended signal, not a defect — but an English edit committed without its translations must fail the CONSUMER's CI, not reach users. `coverage.ts` adds `staleTranslations(catalog)` → `[{ article, language, from, current }]` (both `stale` and `unknown`), which a consumer's test asserts empty; the `help-digests` script prints exactly those pairs with the replacement `from` line for each. `stampTranslations` stays the one-time bootstrap of the coai switch. |
+| 1 | E2.S1 | **Accepted.** The host keeps a registry: `attach(webview)` returns a disposable and is also undone by the webview's own dispose event; a push iterates only attached webviews; a `postMessage` that resolves `false` or rejects is caught, logged through the consumer's reporter, and detaches that webview. A push never runs inside the write queue, so a dead webview cannot block a setting write. Tests: a disposed webview receives nothing, a rejecting one is detached and the others still receive. |
+| 2 | — | **Rejected:** the test is already listed for E2.S2 ("a missing `from` → `unknown`"). It exposed an inconsistency in §2, which said *stale*; §2 now says `unknown`. |
 
 ### Epic 3 — Release pipeline and 0.1.0
 

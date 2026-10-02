@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "ES2022",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "rootDir": "src",
+    "outDir": "out",
+    // ES2022 only — no DOM. Page scripts are STRINGS a webview runs; the TypeScript here never touches a
+    // document, and a `lib: ["DOM"]` would let a pure module compile against globals it will not have.
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "sourceMap": true,
+    "strict": true,
+    // `tsc` EMITS despite errors unless this is set, so a failed compile would leave a half-written `out/`
+    // that `node --test` happily runs — reporting numbers about code that did not build (coai, twice).
+    "noEmitOnError": true,
+    "noImplicitOverride": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": true,
+    "skipLibCheck": true
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "out", "dist"]
+}

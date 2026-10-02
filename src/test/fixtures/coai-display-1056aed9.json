@@ -1,0 +1,159 @@
+{
+  "source": "dew_flow_connect_other_ais@1056aed9 src_vs_code/src/{zoomControl,textTone}.ts",
+  "zoom": {
+    "0": {
+      "scalePx": 13,
+      "offsetLabel": "",
+      "zoomControlHtml": "<span class=\"zoomCtl\" title=\"Text size (applies to every ConnectOtherAIs page)\">\n    <span class=\"ctlIcon\" aria-hidden=\"true\">🔍</span>\n    <button type=\"button\" class=\"icon\" data-zoom=\"-1\" aria-label=\"Smaller text\">−</button>\n    <span id=\"zoomOffset\" class=\"zoomOffset\"></span>\n    <button type=\"button\" class=\"icon\" data-zoom=\"1\" aria-label=\"Larger text\">+</button>\n  </span>",
+      "zoomStyle": "font-size: 13px;"
+    },
+    "1": {
+      "scalePx": 14.3,
+      "offsetLabel": "+1",
+      "zoomControlHtml": "<span class=\"zoomCtl\" title=\"Text size (applies to every ConnectOtherAIs page)\">\n    <span class=\"ctlIcon\" aria-hidden=\"true\">🔍</span>\n    <button type=\"button\" class=\"icon\" data-zoom=\"-1\" aria-label=\"Smaller text\">−</button>\n    <span id=\"zoomOffset\" class=\"zoomOffset\">+1</span>\n    <button type=\"button\" class=\"icon\" data-zoom=\"1\" aria-label=\"Larger text\">+</button>\n  </span>",
+      "zoomStyle": "font-size: 14.3px;"
+    },
+    "2": {
+      "scalePx": 15.73,
+      "offsetLabel": "+2",
+      "zoomControlHtml": "<span class=\"zoomCtl\" title=\"Text size (applies to every ConnectOtherAIs page)\">\n    <span class=\"ctlIcon\" aria-hidden=\"true\">🔍</span>\n    <button type=\"button\" class=\"icon\" data-zoom=\"-1\" aria-label=\"Smaller text\">−</button>\n    <span id=\"zoomOffset\" class=\"zoomOffset\">+2</span>\n    <button type=\"button\" class=\"icon\" data-zoom=\"1\" aria-label=\"Larger text\">+</button>\n  </span>",
+      "zoomStyle": "font-size: 15.73px;"
+    },
+    "3": {
+      "scalePx": 17.3,
+      "offsetLabel": "+3",
+      "zoomControlHtml": "<span class=\"zoomCtl\" title=\"Text size (applies to every ConnectOtherAIs page)\">\n    <span class=\"ctlIcon\" aria-hidden=\"true\">🔍</span>\n    <button type=\"button\" class=\"icon\" data-zoom=\"-1\" aria-label=\"Smaller text\">−</button>\n    <span id=\"zoomOffset\" class=\"zoomOffset\">+3</span>\n    <button type=\"button\" class=\"icon\" data-zoom=\"1\" aria-label=\"Larger text\">+</button>\n  </span>",
+      "zoomStyle": "font-size: 17.3px;"
+    },
+    "5": {
+      "scalePx": 20.94,
+      "offsetLabel": "+5",
+      "zoomControlHtml": "<span class=\"zoomCtl\" title=\"Text size (applies to every ConnectOtherAIs page)\">\n    <span class=\"ctlIcon\" aria-hidden=\"true\">🔍</span>\n    <button type=\"button\" class=\"icon\" data-zoom=\"-1\" aria-label=\"Smaller text\">−</button>\n    <span id=\"zoomOffset\" class=\"zoomOffset\">+5</span>\n    <button type=\"button\" class=\"icon\" data-zoom=\"1\" aria-label=\"Larger text\">+</button>\n  </span>",
+      "zoomStyle": "font-size: 20.94px;"
+    },
+    "9": {
+      "scalePx": 20.94,
+      "offsetLabel": "+5",
+      "zoomControlHtml": "<span class=\"zoomCtl\" title=\"Text size (applies to every ConnectOtherAIs page)\">\n    <span class=\"ctlIcon\" aria-hidden=\"true\">🔍</span>\n    <button type=\"button\" class=\"icon\" data-zoom=\"-1\" aria-label=\"Smaller text\">−</button>\n    <span id=\"zoomOffset\" class=\"zoomOffset\">+5</span>\n    <button type=\"button\" class=\"icon\" data-zoom=\"1\" aria-label=\"Larger text\">+</button>\n  </span>",
+      "zoomStyle": "font-size: 20.94px;"
+    },
+    "-7": {
+      "scalePx": 8.07,
+      "offsetLabel": "−5",
+      "zoomControlHtml": "<span class=\"zoomCtl\" title=\"Text size (applies to every ConnectOtherAIs page)\">\n    <span class=\"ctlIcon\" aria-hidden=\"true\">🔍</span>\n    <button type=\"button\" class=\"icon\" data-zoom=\"-1\" aria-label=\"Smaller text\">−</button>\n    <span id=\"zoomOffset\" class=\"zoomOffset\">−5</span>\n    <button type=\"button\" class=\"icon\" data-zoom=\"1\" aria-label=\"Larger text\">+</button>\n  </span>",
+      "zoomStyle": "font-size: 8.07px;"
+    },
+    "-5": {
+      "scalePx": 8.07,
+      "offsetLabel": "−5",
+      "zoomControlHtml": "<span class=\"zoomCtl\" title=\"Text size (applies to every ConnectOtherAIs page)\">\n    <span class=\"ctlIcon\" aria-hidden=\"true\">🔍</span>\n    <button type=\"button\" class=\"icon\" data-zoom=\"-1\" aria-label=\"Smaller text\">−</button>\n    <span id=\"zoomOffset\" class=\"zoomOffset\">−5</span>\n    <button type=\"button\" class=\"icon\" data-zoom=\"1\" aria-label=\"Larger text\">+</button>\n  </span>",
+      "zoomStyle": "font-size: 8.07px;"
+    },
+    "-3": {
+      "scalePx": 9.77,
+      "offsetLabel": "−3",
+      "zoomControlHtml": "<span class=\"zoomCtl\" title=\"Text size (applies to every ConnectOtherAIs page)\">\n    <span class=\"ctlIcon\" aria-hidden=\"true\">🔍</span>\n    <button type=\"button\" class=\"icon\" data-zoom=\"-1\" aria-label=\"Smaller text\">−</button>\n    <span id=\"zoomOffset\" class=\"zoomOffset\">−3</span>\n    <button type=\"button\" class=\"icon\" data-zoom=\"1\" aria-label=\"Larger text\">+</button>\n  </span>",
+      "zoomStyle": "font-size: 9.77px;"
+    },
+    "-1": {
+      "scalePx": 11.82,
+      "offsetLabel": "−1",
+      "zoomControlHtml": "<span class=\"zoomCtl\" title=\"Text size (applies to every ConnectOtherAIs page)\">\n    <span class=\"ctlIcon\" aria-hidden=\"true\">🔍</span>\n    <button type=\"button\" class=\"icon\" data-zoom=\"-1\" aria-label=\"Smaller text\">−</button>\n    <span id=\"zoomOffset\" class=\"zoomOffset\">−1</span>\n    <button type=\"button\" class=\"icon\" data-zoom=\"1\" aria-label=\"Larger text\">+</button>\n  </span>",
+      "zoomStyle": "font-size: 11.82px;"
+    }
+  },
+  "tone": {
+    "0": {
+      "toneLabel": "",
+      "toneColour": "",
+      "toneColourEditor": "",
+      "toneStyle": "",
+      "toneControlHtml": "<span class=\"toneCtl\" title=\"Text tone: brighter, or dimmer and warmer (every ConnectOtherAIs page)\">\n    <span class=\"ctlIcon\" aria-hidden=\"true\">☀</span>\n    <button type=\"button\" class=\"icon\" data-tone=\"-1\" aria-label=\"Dimmer, warmer text\">−</button>\n    <span id=\"toneOffset\" class=\"zoomOffset\"></span>\n    <button type=\"button\" class=\"icon\" data-tone=\"1\" aria-label=\"Brighter text\">+</button>\n  </span>"
+    },
+    "1": {
+      "toneLabel": "+1",
+      "toneColour": "color-mix(in srgb, var(--vscode-foreground) 92%, var(--coai-tone-away) 8%)",
+      "toneColourEditor": "color-mix(in srgb, var(--vscode-editor-foreground) 92%, var(--coai-tone-away) 8%)",
+      "toneStyle": "--coai-text: color-mix(in srgb, var(--vscode-foreground) 92%, var(--coai-tone-away) 8%); --coai-read: color-mix(in srgb, var(--vscode-editor-foreground) 92%, var(--coai-tone-away) 8%); color: var(--coai-text);",
+      "toneControlHtml": "<span class=\"toneCtl\" title=\"Text tone: brighter, or dimmer and warmer (every ConnectOtherAIs page)\">\n    <span class=\"ctlIcon\" aria-hidden=\"true\">☀</span>\n    <button type=\"button\" class=\"icon\" data-tone=\"-1\" aria-label=\"Dimmer, warmer text\">−</button>\n    <span id=\"toneOffset\" class=\"zoomOffset\">+1</span>\n    <button type=\"button\" class=\"icon\" data-tone=\"1\" aria-label=\"Brighter text\">+</button>\n  </span>"
+    },
+    "2": {
+      "toneLabel": "+2",
+      "toneColour": "color-mix(in srgb, var(--vscode-foreground) 84%, var(--coai-tone-away) 16%)",
+      "toneColourEditor": "color-mix(in srgb, var(--vscode-editor-foreground) 84%, var(--coai-tone-away) 16%)",
+      "toneStyle": "--coai-text: color-mix(in srgb, var(--vscode-foreground) 84%, var(--coai-tone-away) 16%); --coai-read: color-mix(in srgb, var(--vscode-editor-foreground) 84%, var(--coai-tone-away) 16%); color: var(--coai-text);",
+      "toneControlHtml": "<span class=\"toneCtl\" title=\"Text tone: brighter, or dimmer and warmer (every ConnectOtherAIs page)\">\n    <span class=\"ctlIcon\" aria-hidden=\"true\">☀</span>\n    <button type=\"button\" class=\"icon\" data-tone=\"-1\" aria-label=\"Dimmer, warmer text\">−</button>\n    <span id=\"toneOffset\" class=\"zoomOffset\">+2</span>\n    <button type=\"button\" class=\"icon\" data-tone=\"1\" aria-label=\"Brighter text\">+</button>\n  </span>"
+    },
+    "3": {
+      "toneLabel": "+3",
+      "toneColour": "color-mix(in srgb, var(--vscode-foreground) 76%, var(--coai-tone-away) 24%)",
+      "toneColourEditor": "color-mix(in srgb, var(--vscode-editor-foreground) 76%, var(--coai-tone-away) 24%)",
+      "toneStyle": "--coai-text: color-mix(in srgb, var(--vscode-foreground) 76%, var(--coai-tone-away) 24%); --coai-read: color-mix(in srgb, var(--vscode-editor-foreground) 76%, var(--coai-tone-away) 24%); color: var(--coai-text);",
+      "toneControlHtml": "<span class=\"toneCtl\" title=\"Text tone: brighter, or dimmer and warmer (every ConnectOtherAIs page)\">\n    <span class=\"ctlIcon\" aria-hidden=\"true\">☀</span>\n    <button type=\"button\" class=\"icon\" data-tone=\"-1\" aria-label=\"Dimmer, warmer text\">−</button>\n    <span id=\"toneOffset\" class=\"zoomOffset\">+3</span>\n    <button type=\"button\" class=\"icon\" data-tone=\"1\" aria-label=\"Brighter text\">+</button>\n  </span>"
+    },
+    "5": {
+      "toneLabel": "+5",
+      "toneColour": "color-mix(in srgb, var(--vscode-foreground) 60%, var(--coai-tone-away) 40%)",
+      "toneColourEditor": "color-mix(in srgb, var(--vscode-editor-foreground) 60%, var(--coai-tone-away) 40%)",
+      "toneStyle": "--coai-text: color-mix(in srgb, var(--vscode-foreground) 60%, var(--coai-tone-away) 40%); --coai-read: color-mix(in srgb, var(--vscode-editor-foreground) 60%, var(--coai-tone-away) 40%); color: var(--coai-text);",
+      "toneControlHtml": "<span class=\"toneCtl\" title=\"Text tone: brighter, or dimmer and warmer (every ConnectOtherAIs page)\">\n    <span class=\"ctlIcon\" aria-hidden=\"true\">☀</span>\n    <button type=\"button\" class=\"icon\" data-tone=\"-1\" aria-label=\"Dimmer, warmer text\">−</button>\n    <span id=\"toneOffset\" class=\"zoomOffset\">+5</span>\n    <button type=\"button\" class=\"icon\" data-tone=\"1\" aria-label=\"Brighter text\">+</button>\n  </span>"
+    },
+    "9": {
+      "toneLabel": "+5",
+      "toneColour": "color-mix(in srgb, var(--vscode-foreground) 60%, var(--coai-tone-away) 40%)",
+      "toneColourEditor": "color-mix(in srgb, var(--vscode-editor-foreground) 60%, var(--coai-tone-away) 40%)",
+      "toneStyle": "--coai-text: color-mix(in srgb, var(--vscode-foreground) 60%, var(--coai-tone-away) 40%); --coai-read: color-mix(in srgb, var(--vscode-editor-foreground) 60%, var(--coai-tone-away) 40%); color: var(--coai-text);",
+      "toneControlHtml": "<span class=\"toneCtl\" title=\"Text tone: brighter, or dimmer and warmer (every ConnectOtherAIs page)\">\n    <span class=\"ctlIcon\" aria-hidden=\"true\">☀</span>\n    <button type=\"button\" class=\"icon\" data-tone=\"-1\" aria-label=\"Dimmer, warmer text\">−</button>\n    <span id=\"toneOffset\" class=\"zoomOffset\">+5</span>\n    <button type=\"button\" class=\"icon\" data-tone=\"1\" aria-label=\"Brighter text\">+</button>\n  </span>"
+    },
+    "-7": {
+      "toneLabel": "−5",
+      "toneColour": "color-mix(in srgb, var(--vscode-foreground) 60%, var(--coai-tone-warm) 40%)",
+      "toneColourEditor": "color-mix(in srgb, var(--vscode-editor-foreground) 60%, var(--coai-tone-warm) 40%)",
+      "toneStyle": "--coai-text: color-mix(in srgb, var(--vscode-foreground) 60%, var(--coai-tone-warm) 40%); --coai-read: color-mix(in srgb, var(--vscode-editor-foreground) 60%, var(--coai-tone-warm) 40%); color: var(--coai-text);",
+      "toneControlHtml": "<span class=\"toneCtl\" title=\"Text tone: brighter, or dimmer and warmer (every ConnectOtherAIs page)\">\n    <span class=\"ctlIcon\" aria-hidden=\"true\">☀</span>\n    <button type=\"button\" class=\"icon\" data-tone=\"-1\" aria-label=\"Dimmer, warmer text\">−</button>\n    <span id=\"toneOffset\" class=\"zoomOffset\">−5</span>\n    <button type=\"button\" class=\"icon\" data-tone=\"1\" aria-label=\"Brighter text\">+</button>\n  </span>"
+    },
+    "-5": {
+      "toneLabel": "−5",
+      "toneColour": "color-mix(in srgb, var(--vscode-foreground) 60%, var(--coai-tone-warm) 40%)",
+      "toneColourEditor": "color-mix(in srgb, var(--vscode-editor-foreground) 60%, var(--coai-tone-warm) 40%)",
+      "toneStyle": "--coai-text: color-mix(in srgb, var(--vscode-foreground) 60%, var(--coai-tone-warm) 40%); --coai-read: color-mix(in srgb, var(--vscode-editor-foreground) 60%, var(--coai-tone-warm) 40%); color: var(--coai-text);",
+      "toneControlHtml": "<span class=\"toneCtl\" title=\"Text tone: brighter, or dimmer and warmer (every ConnectOtherAIs page)\">\n    <span class=\"ctlIcon\" aria-hidden=\"true\">☀</span>\n    <button type=\"button\" class=\"icon\" data-tone=\"-1\" aria-label=\"Dimmer, warmer text\">−</button>\n    <span id=\"toneOffset\" class=\"zoomOffset\">−5</span>\n    <button type=\"button\" class=\"icon\" data-tone=\"1\" aria-label=\"Brighter text\">+</button>\n  </span>"
+    },
+    "-3": {
+      "toneLabel": "−3",
+      "toneColour": "color-mix(in srgb, var(--vscode-foreground) 76%, var(--coai-tone-warm) 24%)",
+      "toneColourEditor": "color-mix(in srgb, var(--vscode-editor-foreground) 76%, var(--coai-tone-warm) 24%)",
+      "toneStyle": "--coai-text: color-mix(in srgb, var(--vscode-foreground) 76%, var(--coai-tone-warm) 24%); --coai-read: color-mix(in srgb, var(--vscode-editor-foreground) 76%, var(--coai-tone-warm) 24%); color: var(--coai-text);",
+      "toneControlHtml": "<span class=\"toneCtl\" title=\"Text tone: brighter, or dimmer and warmer (every ConnectOtherAIs page)\">\n    <span class=\"ctlIcon\" aria-hidden=\"true\">☀</span>\n    <button type=\"button\" class=\"icon\" data-tone=\"-1\" aria-label=\"Dimmer, warmer text\">−</button>\n    <span id=\"toneOffset\" class=\"zoomOffset\">−3</span>\n    <button type=\"button\" class=\"icon\" data-tone=\"1\" aria-label=\"Brighter text\">+</button>\n  </span>"
+    },
+    "-1": {
+      "toneLabel": "−1",
+      "toneColour": "color-mix(in srgb, var(--vscode-foreground) 92%, var(--coai-tone-warm) 8%)",
+      "toneColourEditor": "color-mix(in srgb, var(--vscode-editor-foreground) 92%, var(--coai-tone-warm) 8%)",
+      "toneStyle": "--coai-text: color-mix(in srgb, var(--vscode-foreground) 92%, var(--coai-tone-warm) 8%); --coai-read: color-mix(in srgb, var(--vscode-editor-foreground) 92%, var(--coai-tone-warm) 8%); color: var(--coai-text);",
+      "toneControlHtml": "<span class=\"toneCtl\" title=\"Text tone: brighter, or dimmer and warmer (every ConnectOtherAIs page)\">\n    <span class=\"ctlIcon\" aria-hidden=\"true\">☀</span>\n    <button type=\"button\" class=\"icon\" data-tone=\"-1\" aria-label=\"Dimmer, warmer text\">−</button>\n    <span id=\"toneOffset\" class=\"zoomOffset\">−1</span>\n    <button type=\"button\" class=\"icon\" data-tone=\"1\" aria-label=\"Brighter text\">+</button>\n  </span>"
+    }
+  },
+  "zoomScript": "\n  for (const zoomButton of document.querySelectorAll('button[data-zoom]')) {\n    zoomButton.addEventListener('click', () => {\n      vscode.postMessage({ type: 'zoom', delta: Number(zoomButton.dataset.zoom), field: '' });\n    });\n  }\n  window.addEventListener('message', (event) => {\n    if (event.data?.type !== 'uiScale') { return; }\n    document.body.style.fontSize = event.data.px + 'px';\n    const offsetLabelNode = document.getElementById('zoomOffset');\n    if (offsetLabelNode) { offsetLabelNode.textContent = event.data.label; }\n  });",
+  "ZOOM_CSS": "\n  .zoomCtl { display: inline-flex; align-items: center; gap: 2px; margin-left: 8px; }\n  .zoomCtl button { min-width: 24px; padding: 2px 6px; }\n  /* Which pair is which, without reading a tooltip: four identical buttons in a row is a row you\n     have to remember the order of. aria-hidden, because the control around it is already named. */\n  .ctlIcon { opacity: .7; font-size: .9em; margin-right: 2px; line-height: 1; }\n  .zoomOffset { min-width: 2em; text-align: center; opacity: .75; font-size: .85em; }",
+  "toneScript": "\n  for (const toneButton of document.querySelectorAll('button[data-tone]')) {\n    toneButton.addEventListener('click', () => {\n      vscode.postMessage({ type: 'tone', delta: Number(toneButton.dataset.tone), field: '' });\n    });\n  }\n  window.addEventListener('message', (event) => {\n    if (event.data?.type !== 'textTone') { return; }\n    // BOTH, for the same reason the stylesheet writes both: the transcript names its own colour and\n    // would keep it through every press otherwise.\n    document.body.style.setProperty('--coai-text', event.data.color);\n    document.body.style.setProperty('--coai-read', event.data.read);\n    document.body.style.color = event.data.color.length > 0 ? 'var(--coai-text)' : '';\n    const toneLabelNode = document.getElementById('toneOffset');\n    if (toneLabelNode) { toneLabelNode.textContent = event.data.label; }\n  });",
+  "TONE_CSS": "\n  /* The defaults sit on the ROOT so a page's own body rule can override them: a declaration on the\n     element beats one it merely inherits, whichever order the two rules are written in. */\n  :root { --coai-text: var(--vscode-foreground); --coai-read: var(--vscode-editor-foreground); }\n  body { --coai-tone-away: #ffffff; --coai-tone-warm: #b9a88a; }\n  body.vscode-light { --coai-tone-away: #000000; }\n  .toneCtl { display: inline-flex; align-items: center; gap: 2px; margin-left: 6px; }\n  .toneCtl button { min-width: 24px; padding: 2px 6px; }",
+  "clamp": {
+    "scale": [
+      0,
+      0,
+      2,
+      -2,
+      0,
+      0
+    ],
+    "tone": [
+      0,
+      0,
+      2,
+      -2,
+      0,
+      0
+    ]
+  }
+}

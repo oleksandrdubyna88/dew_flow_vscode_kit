@@ -1,0 +1,43 @@
+# Dependabot version updates — grouped, weekly, on Monday morning Kyiv time, one pull request per
+# ecosystem so a week of bumps is one review rather than fifteen.
+#
+# Two pins are deliberate and must not be proposed away:
+# - `typescript` stays on 6.x: `typescript-eslint` accepts `>=4.8.4 <6.1.0`, and TypeScript 7 refuses to
+#   install beside it and refuses at run time too. A patch bump is welcome; the major is not.
+# - `@types/vscode` MINOR bumps are ignored as well as major ones: the types must never run ahead of the
+#   `engines.vscode` a CONSUMER declares (`^1.85.0` in ConnectOtherAIs) — vsce refuses to package when they
+#   do, and the only ways out are to raise engines, which drops every user below that VS Code build, or to
+#   leave the types alone.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:00"
+      timezone: "Europe/Kyiv"
+    groups:
+      npm-minor-and-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/vscode"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:00"
+      timezone: "Europe/Kyiv"
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci(deps)"

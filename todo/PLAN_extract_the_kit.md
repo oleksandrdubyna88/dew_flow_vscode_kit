@@ -32,6 +32,13 @@ What must be true when this plan is done:
 Constraints: no behaviour change for coai users; no runtime dependency; webview page scripts tested by
 running them; English UI except help bodies and help chrome.
 
+**Security of the pages (gate, plan round 1):** every page the kit renders carries a
+Content-Security-Policy with `default-src 'none'` and a fresh per-render nonce on its one script; the
+HOST validates every message a page posts before acting on it — a known `type`, a numeric `delta`
+reduced to its sign, a language taken only from the catalog's list — and ignores anything else. An
+origin check is not applicable: a VS Code webview can post only to its own panel through
+`acquireVsCodeApi`, and there is no foreign origin in that channel.
+
 ## 2. What moves, from where, into what
 
 Source: `dew_flow_connect_other_ais/src_vs_code/src/` at `1056aed9`.
@@ -48,7 +55,20 @@ Source: `dew_flow_connect_other_ais/src_vs_code/src/` at `1056aed9`.
 | `helpContent.ts` engine (types, languages, `bodyFor`) | `src/help/catalog.ts` | articles + translations passed in; adds `stale` | the ARTICLES and `help<Lang>.ts` |
 | `helpPage.ts` (319) | `src/help/page.ts` | catalog, display config, an `appendix(id, language)` hook (coai's prompt listing) | `helpPrompts.ts` and the hook |
 | `helpPanel.ts` (97) | `src/help/panel.ts` | a `HelpPanelPort` (create panel, config, messages), viewType/title/section/key | a thin binding |
-| — (new) | `src/help/digest.ts` | `digestOf(body)`: first 8 hex of SHA-256 of the five fields joined | — |
+| — (new) | `src/help/digest.ts` | `digestOf(body)`: see the canonical form below | — |
+
+**The digest, canonically (gate, plan round 1):** the six fields in the fixed order `title`,
+`whatItIs`, `why`, `setup`, `usage`, `whatCanGoWrong`, joined with U+0000, encoded UTF-8, no other
+normalisation; the digest is the first 8 hex characters of SHA-256 over those bytes.
+
+**Where a translation keeps it:** each translation module exports `{ bodies, from }` — `bodies` maps an
+article id to its translated `HelpBody`, `from` maps the same id to the digest of the ENGLISH body it was
+translated from. `bodyFor` answers `{ body, fallback, stale }`: `fallback` when the language has no body
+for the article, `stale` when it has one whose `from` differs from the current English digest — or has
+no `from` entry at all, which is reported as stale rather than assumed fresh. **Bootstrap:** the coai
+switch stamps the CURRENT English digests for every existing translation, on the stated assumption that
+the shipped translations match today's English; a `help-digests` script prints the digests to paste
+after a deliberate re-translation.
 
 ## 3. Build order
 
@@ -82,13 +102,102 @@ Source: `dew_flow_connect_other_ais/src_vs_code/src/` at `1056aed9`.
   untouched articles stay fresh; a missing digest is reported, not treated as fresh.
 - Consumer smoke: coai's full suite green after the switch; the coai `.vsix` still bundles (its own
   bundle test).
+- **Consumer-level checks in the coai switch PR** (gate): its binding passes section `coai`, keys
+  `uiScale` / `textTone` / `helpLanguage`, product `ConnectOtherAIs` and CSS prefix `coai`, and the
+  rendered help, zoom and tone markup equals a snapshot taken from the build BEFORE the switch.
+- **Both platforms** (gate): CI runs the suite on `ubuntu-latest` and `windows-latest`; `.gitattributes`
+  forces LF; rendered output is asserted to contain no CR, so a byte-compat test cannot pass on one
+  platform and fail on the other.
+- **The artefact before it is public** (gate): a CI job packs the tarball, installs it into a minimal
+  consumer fixture and bundles that fixture with the extensions' esbuild flags (`--bundle
+  --external:vscode --format=cjs --platform=node`); the publish job depends on it.
 
 ## 5. Growth surfaces
 
-None at run time: the package keeps no files, no caches and no state beyond the in-memory write queue
-(one promise chain per host).
+The package keeps no files and no caches. Its one growing structure is the **write queue**, one per
+host instance: a promise chain whose length is the number of presses not yet written, each press one
+settings write; a settled write is not retained, and a failed one is handed to the injected reporter
+rather than kept. Every configuration listener a host registers is returned as a `Disposable`, and the
+help panel disposes all of them when it closes — a closed page holds nothing.
 
-## 6. Definition of Done
+## 6. Release, rollback, and the order of the switches
+
+1. The kit publishes 0.1.0 from its own repository first, verified with `npm view` and an install of
+   the published artefact into the consumer fixture.
+2. Then each consumer switches in a pull request of its own repository, pinning the EXACT version.
+3. **A bad release is fixed forward**: npm versions are immutable, so the fix ships as 0.1.1 and the bad
+   version is `npm deprecate`d with the reason. Nothing is ever unpublished.
+4. **A failed switch is a reverted pull request** in that consumer — its previous modules are in its git
+   history, and a consumer that never switched is unaffected by a kit release.
+
+## 7. Epics and stories (split 2026-10-02, on Fable, as the gate's operator commands require)
+
+Three epics, each a branch stacked on the previous epic's commit, each closed by one review-gate code
+round over its whole diff and a green CI. Model per story follows `common.subagent-models`: Opus by
+default, Fable where a wrong answer is paid for later (architecture of the new package, the
+webview→host trust boundary, publishing credentials).
+
+| # | Epic | Branch | Base | True when done |
+|---|---|---|---|---|
+| 1 | Foundation and the pure modules | `feat/kit-e1-foundation-pure` | `main` @ `34338f4` | `npm ci && npm run typecheck && npm run lint && npm test && npm run build` green on ubuntu-latest AND windows-latest; `dist/` is CommonJS + `.d.ts`; zero runtime dependencies; `text`, `webview`, `settings`, `display/zoom`, `display/tone` ported and byte-identical to coai `1056aed9` for coai's config, proved with teeth; page scripts RUN in a deny-by-default `node:vm` harness; rendered output asserted CR-free |
+| 2 | Host ports and the help subsystem | `feat/kit-e2-host-help` | E1's merge commit | `display/host`, `help/catalog`, `help/digest`, `help/page`, `help/panel` behind narrow ports with strict fakes; every webview message validated host-side; CSP nonce per render; stale-translation detection with `{ bodies, from }`; `src/index.ts` exports the whole 0.1.0 API; README "Use" |
+| 3 | Release pipeline and 0.1.0 | `feat/kit-e3-release` | E2's merge commit | the pre-publish job packs, installs into a consumer fixture and bundles with esbuild on both OSes; `release.yml` publishes with provenance only after it; `v0.1.0` tagged by release-please; `npm view` prints `0.1.0`; POST_DEPLOY 1–2 pass; research docs describe what shipped |
+
+### Epic 1 — Foundation and the pure modules
+
+- **E1.S1 — Repository machinery and the test harness** (Fable: the package layout and CI matrix every
+  later story and consumer binds to). `package.json` (`files: ["dist"]`, `main`/`types`/`exports`, no
+  `dependencies`), `tsconfig.json` (coai's strict set, CJS out), `eslint.config.mjs`
+  (`linebreak-style: unix`), `.editorconfig`, `scripts/run-tests.mjs`, `.github/workflows/ci.yml` (matrix
+  ubuntu/windows; `core.autocrlf false` before checkout; conventions check, plan-lifecycle, typecheck,
+  lint, test, build, `npm pack --dry-run`), `pr-title.yml`, `coderabbit-review.yml` + `.coderabbit.yaml`,
+  dependabot, an empty `src/index.ts`, `src/test/pageHarness.ts` (`node:vm`, explicit global allowlist,
+  `timeout: 5000`, `posted[]`), `src/test/lineEndings.ts` (`assertNoCr`). Tests: an infinite fragment
+  fails by timeout; an undeclared global is a `ReferenceError`; `assertNoCr` rejects `\r`.
+- **E1.S2 — `text`, `webview`, `settings`** (Opus). `src/text/asText.ts`, `src/webview/escape.ts`
+  (`escapeHtml`, `escapeHtmlForHighlighting`, `jsonForScript`, `nonce()`), `src/webview/writeQueue.ts`,
+  `src/settings/settingWritten.ts` (reporter injected). Tests: the ported setting-write and escaper
+  cases, two quick presses are two steps, a queued write never waits on itself, and the growth budget —
+  after N presses settle nothing is retained.
+- **E1.S3 — `display/zoom` and `display/tone`, pure halves** (Opus). `src/display/config.ts`
+  (`DisplayConfig { product; cssPrefix }`), `src/display/zoom.ts`, `src/display/tone.ts`. Tests:
+  byte-compat against coai literals with the source line named, with teeth (a step of 1.2 must make the
+  assertion throw); the page scripts RUN (a click posts `{type, delta, field:''}`, a pushed value
+  repaints); `assertNoCr` on every fragment.
+
+### Epic 2 — Host ports and the help subsystem
+
+- **E2.S1 — `display/host` with `ConfigurationPort` and press validation** (Fable: the public port and
+  the webview→host trust boundary). `src/display/port.ts`, `src/display/press.ts` (known type only,
+  finite numeric delta reduced to its sign, anything else rejected), `src/display/host.ts`
+  (`createDisplayHost`), a strict fake port. Tests: clamp and one write per press, two quick presses
+  both land, push reaches every webview, dispose unhooks, the validation table.
+- **E2.S2 — `help/catalog` and `help/digest` with stale detection** (Opus). `types.ts`, `digest.ts`,
+  `catalog.ts` (`bodyFor` → `{ body, fallback, stale: 'fresh' | 'stale' | 'unknown' }`),
+  `bootstrap.ts` (`stampTranslations`), `coverage.ts`. Tests: a digest vector literal, bootstrap → nothing
+  stale, an English edit → exactly that article stale, a missing `from` → `unknown`, fallback unchanged.
+- **E2.S3 — `help/page`, `help/panel`, the index and README** (Fable: CSP and the panel's message
+  validation are security; `HelpPanelPort` is public). Tests: byte-compat of the whole page for coai's
+  config with an injected nonce and appendix, with teeth; the page script RUN (index ↔ article, search,
+  `noHits`, Back, Escape, language post); the panel with fakes (unknown type ignored, a language outside
+  the list not written, re-render on change, dispose unhooks all listeners); `assertNoCr`.
+
+### Epic 3 — Release pipeline and 0.1.0
+
+- **E3.S1 — Pre-publish consumer fixture** (Opus). `test/consumer-fixture/`,
+  `scripts/pack-and-consume.mjs` (pack → install → esbuild bundle → run under node with a `vscode`
+  stub), a `pack-and-consume` CI job on both OSes. Tests: a fixture with a misspelled import goes red.
+- **E3.S2 — release-please, `release.yml`, publish 0.1.0** (Fable: publishing credentials and the supply
+  chain of two extensions). `release-please-config.json`, manifest, `release-please.yml`, `release.yml`
+  (`needs: pack-and-consume`, `id-token: write`, `npm publish --provenance --access public` with
+  `NPM_TOKEN`, SHA-pinned actions); README "Release and rollback"; research docs; POST_DEPLOY stamped.
+
+**Order and what is left to the consumers.** E1 → E2 → E3 strictly; publishing finishes before any
+consumer switches. The ConnectOtherAIs switch (its consumer-level tests, the `stampTranslations`
+bootstrap of its four translation modules, deleting the moved modules) and wsl_care's first extension
+commit are pull requests in those repositories.
+
+## 8. Definition of Done
 
 - [ ] 0.1.0 published from CI with provenance; `npm view @oleksandrdubyna88/vscode-webview-kit` shows it.
 - [ ] Byte-compat tests green and shown to have teeth.

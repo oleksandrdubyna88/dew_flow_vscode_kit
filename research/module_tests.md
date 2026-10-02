@@ -1,8 +1,8 @@
 # module_tests — the harness, the flows it drives, and what it does not prove
 
 > Adopted 2026-10-02 with no product code yet; a flow is `not covered` until its module lands. As of E2.S3
-> every module of epics 1 and 2 has landed and every flow below is covered; the pack-install-bundle flow is
-> E3.S1's.
+> every module of epics 1 and 2 has landed and every flow below is covered; since E3.S1 the
+> pack-install-bundle-run flow is covered too, by the consumer fixture (below).
 
 ## Where the harness is and how it runs
 
@@ -69,6 +69,46 @@ source is scanned for `${JSON.stringify(` and fails naming `file:line`; the two 
 value that way are allowlisted by their EXACT line, a companion test fails when an allowlisted line moves,
 and a third proves the pattern matches every spelling in a fixture.
 
+### The consumer fixture and `pack-and-consume` (E3.S1)
+
+Everything above runs on `out/`, the suite's own compile. What SHIPS is the tarball, so one check consumes
+exactly that, the way an extension does — the family rule "verify the ARTEFACT, not the source":
+
+- `test/consumer-fixture/` — a minimal consumer extension, never installed in place: `package.json` names the
+  kit as `file:../kit.tgz`; `tsconfig.json` is a consumer's strict set with `node16` resolution (the
+  `exports` map and its `types` condition) and `skipLibCheck: false` (the shipped `.d.ts` must compile under
+  it); `src/vscode.d.ts` declares the slice of `@types/vscode` the adapters touch, so nothing is downloaded;
+  `src/helpCatalog.ts` is a catalog written as a consumer writes one — a `uk` module whose `from` is a
+  LITERAL digest; `src/extension.ts` adapts `vscode.workspace` and a `WebviewPanel` to `ConfigurationPort` and
+  `HelpPanelPort` exactly as README "Use" shows, makes ONE display host and a help panel with an appendix,
+  and renders a page of its own through `escapeHtml`, `jsonForScript`, `nonce` and the two controls.
+- `test/consumer-fixture/run.mjs` — runs the BUNDLE under node: a `require` that answers `vscode` with a
+  stub, hands out node built-ins and REFUSES anything else (so a bundle that still needs the kit at run time
+  fails), and a stub whose every object throws on a member it does not have, naming it. It drives the
+  fixture: activate, the help command, the page's CSP nonce equal to its one script's, the attachment's
+  pushes, a press written once to the user scope and pushed back larger, a non-numeric delta, an unknown
+  type and a language the catalog does not offer writing nothing, a language re-rendering the page in
+  Ukrainian under a NEW nonce, the escapers holding a `</script>` title and payload, no notice reported, and
+  after the panel closes and deactivate runs, no configuration listener, message listener or command left.
+- `scripts/pack-and-consume.mjs` — eight named steps, each a `node <script> <args>` child (no shell) with
+  npm's `npm_*` variables removed: **pack** from a repository whose `dist/` it first deletes, so only
+  `prepack` can build it; **contents** read from the tarball's own tar headers (`dist/index.js`,
+  `dist/index.d.ts` and every `bin` target present; nothing outside `files` and npm's three; `dist/` only
+  `.js` / `.d.ts`); **fixture** copied to the OS temp dir with the tarball beside it; **install** `npm install
+  --offline`; **typecheck** with this repository's TypeScript; **bundle** with this repository's esbuild and
+  the extensions' flags, every input inside the copy; **run**; **bin** through `npm exec --no` (npm's `.cmd`
+  shim on Windows) over the bundled catalog, which must answer "every translation was made from the current
+  English" — and on POSIX the `.bin` link executed directly (exec bit and shebang). `--broken-import`
+  rewrites `createDisplayHost` to `createDisplayHots` in the copy and refuses to run if there is no such
+  import line to misspell. The temp dir is removed pass or fail. About 15–27 s on this Windows machine
+  (pack 3–6 s with the build, install 1.5–2.6 s, bin 2.7 s; the first run after a fresh esbuild install
+  spent 14 s in esbuild's first start).
+- `src/test/packaging.test.ts` runs it twice — the normal run and `--broken-import` — at the end of the file
+  that also runs the dry-run pack: the pack rebuilds `dist/`, the dry-run walks it, and tests inside one
+  file run one after another where files run side by side. **So `npm test` rebuilds `dist/`.** CI runs it a
+  third time, alone, in `.github/workflows/pack-and-consume.yml` on both platforms — the job the release
+  workflow calls (E3.S2).
+
 ## Flow catalogue
 
 | Flow | Covered | By |
@@ -94,6 +134,8 @@ and a third proves the pattern matches every spelling in a fixture.
 | **No page module reaches a host module, even one hop away**; the panel and the index do reach `nonce.ts`; the import reader is pinned on a fixture | covered | `src/test/architecture.test.ts` — teeth: an import of `nonce` added to `help/page.ts` turns the closure test red while the per-file scan stays green |
 | **No `JSON.stringify` interpolated into a template literal** in any shipped source, beyond two error messages allowlisted by exact line | covered | `src/test/scriptInterpolation.test.ts` — teeth: routing the page script's `HOME` through `JSON.stringify` turns the scan red while every byte-compat test stays GREEN (the bytes are equal for these inputs), which is exactly the case only the scan can see |
 | **`help-digests` reaches consumers**: the manifest names the bin `vscode-webview-kit-help-digests` → `scripts/help-digests.mjs` and lists it in `files`; `npm pack --dry-run` carries it and otherwise only `dist/`, the manifest, README and LICENSE; run from an installed layout with no `--kit` it uses that package's own `dist/` (exit 1 with the lines; exit 0 when fresh); it starts with a node shebang | covered | `src/test/packaging.test.ts` — red first before `package.json` changed: the bin was `undefined` and the pack lacked the script. Teeth: resolving the default kit from the cwd turns the installed-layout run red |
+| **The packed tarball is what a consumer gets** (E3.S1): `npm pack` from a repository with no `dist/` carries `dist/index.js`, `dist/index.d.ts` and the bin script, built by `prepack`, and nothing unexpected; `npm install` of it offline installs this manifest's version; the fixture type-checks against the INSTALLED `.d.ts` under `node16` / `skipLibCheck: false`; esbuild bundles it with the extensions' flags from inside the copy only; the bundle RUNS under the `vscode` stub — help page under a CSP nonce, a press validated and written once through the stub configuration and pushed back, refused messages writing nothing, a language re-render under a fresh nonce, the escapers, every listener unhooked; the installed bin answers through `npm exec` (and the `.bin` link on POSIX) | covered | `src/test/packaging.test.ts` → `scripts/pack-and-consume.mjs` over `test/consumer-fixture/`. Red first for finding 1 (epic 3 plan round): before `prepack` existed the run stopped at `contents` — *the tarball lacks dist/index.js, dist/index.d.ts — did prepack build dist/? It carries: LICENSE, README.md, package.json, scripts/help-digests.mjs*. Teeth: writing to `ConfigurationTarget.Workspace` in the fixture's adapter fails `run` (`+ target: 2, - target: 1`); marking the kit external in the bundle fails `run` (*the bundle required "@oleksandrdubyna88/vscode-webview-kit" at run time*); each file restored and checked by SHA-256 |
+| **A misspelled import fails the pipeline AT THE TYPECHECK** (`--broken-import`: `createDisplayHots`): exit 1, `FAILED at step "typecheck"` naming the name — TS2724 *has no exported member named 'createDisplayHots'. Did you mean 'createDisplayHost'?* — after `install` passed, and nothing after it runs | covered | `src/test/packaging.test.ts` — red first against the script with its typecheck step removed: the test failed with *FAILED at step "run": … TypeError: (0 , import_vscode_webview_kit2.createDisplayHots) is not a function* — esbuild bundles a missing named import from a CommonJS module without a word, so without the typecheck the misspelling surfaces only when the extension activates. Step restored, SHA-256 identical, green |
 | **SHA-256** (`src/help/sha256.ts`, pure TypeScript) equals the standard: FIPS 180-2's five vectors (empty, `abc`, the 448- and 896-bit messages, one million `a`), and `node:crypto` at every length 0–200 bytes and over 300 seeded random strings (Cyrillic, emoji, NUL, lone surrogates) | covered | `src/test/sha256.test.ts` — red first against a stub answering 64 zeros: 7 of 8 red (`actual '0000…' expected 'e3b0c442…'`) |
 | **The digest's canonical form** (plan §2): the six fields by name in the fixed order, joined with U+0000, UTF-8, no other normalisation, first 8 hex — two vector literals computed independently by `node:crypto` (`fb76c375`, and `eafba843` for a Cyrillic body); CRLF ≠ LF, a trailing space or newline and a decomposed accent each change it; moving a character across a field boundary changes it; extra properties do not; a missing field is refused by name; `isDigest` accepts 8 lowercase hex only | covered | `src/test/digest.test.ts` — red first against a first cut that normalised CRLF, trimmed and joined with no separator: 7 of 12 red (`'TitleWhat it is…'` for the canonical form; CRLF and LF both `1e500044`; a missing field threw `Cannot read properties of undefined`). Teeth: emptying the separator turns the two vectors, the canonical form and the boundary test red |
 | For coai's content `bodyFor` answers coai's **body and `fallback`**: every answer coai's own `bodyFor` gave over partial modules (a missing body, an empty language), recorded by `scripts/record-coai-help.mjs`; the fallback matrix over coai's real coverage (33 articles × 5 languages); `HELP_LANGUAGES` and the labels | covered | `src/test/helpCatalog.test.ts` (passes against a straight port of coai's engine too — it is the compatibility half) |
@@ -142,10 +184,14 @@ harness) are where a real webview is exercised. In particular:
 - coai's real help BODIES are not compared — only its id coverage and its engine over small modules; the
   coai switch PR snapshots its rendered help before and after, which is where 800 KB of real content is
   held.
-- `help-digests`' default kit path is exercised from an installed LAYOUT the suite builds by hand
-  (`node_modules/<name>/{package.json, scripts/, dist/}` with this build's `out/` as `dist/`), not from a
-  tarball npm installed — npm's own bin shims and exec bit are E3.S1's consumer fixture. In this repository
-  the default needs `npm run build` first; it was run by hand against `dist/` (E2.S3).
+- `help-digests`' default kit path is exercised twice: from an installed LAYOUT the suite builds by hand
+  (`node_modules/<name>/{package.json, scripts/, dist/}` with this build's `out/` as `dist/`), and since
+  E3.S1 from the tarball npm installed, through npm's shim (`.cmd` on Windows; the executable `.bin` link on
+  POSIX, which this Windows machine cannot run — the Linux CI leg is where the exec bit is observed).
+- The consumer fixture's `vscode` is a stub and its declaration a local slice of `@types/vscode`: that the
+  real `@types/vscode` accepts the same adapters is the consumers' own typecheck, and a real extension host
+  is their editor harness. The fixture uses `node16` resolution; a consumer on `bundler` resolution reads the
+  same `types` condition, which is not run separately.
 - The help page is held against coai's page over SYNTHETIC articles; coai's real 800 KB of help and its
   real prompt listing are held by the coai switch PR's own before/after snapshot.
 - `style-src 'unsafe-inline'` is coai's and is kept; the suite asserts the page's one `<style>` carries only
@@ -158,3 +204,8 @@ harness) are where a real webview is exercised. In particular:
 ## When it runs
 
 On every pull request and push to `main`, in CI.
+
+`npm test` runs everything above, `pack-and-consume` included (both modes, about 12 s of a 20 s suite here).
+CI's `build-test` job runs `npm test` on both platforms, and `ci.yml` also calls the reusable
+`pack-and-consume.yml`, which runs `npm run pack-and-consume` alone on both platforms — the job E3.S2's
+release workflow calls again before it publishes.

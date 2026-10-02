@@ -1,0 +1,12 @@
+{
+  "name": "kit-consumer-fixture",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A minimal consumer extension of @oleksandrdubyna88/vscode-webview-kit. Never installed in place: scripts/pack-and-consume.mjs copies it to a temporary directory, puts the packed tarball beside it as ../kit.tgz, and installs it there.",
+  "license": "MIT",
+  "type": "commonjs",
+  "main": "dist/extension.js",
+  "dependencies": {
+    "@oleksandrdubyna88/vscode-webview-kit": "file:../kit.tgz"
+  }
+}

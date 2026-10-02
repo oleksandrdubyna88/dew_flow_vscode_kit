@@ -1,0 +1,22 @@
+{
+  // A consumer's strict set, checked against the INSTALLED package: `node16` resolution honours the
+  // package's `exports` map and its `types` condition, and `skipLibCheck: false` makes the shipped `.d.ts`
+  // compile under these settings too — a declaration that only compiles with skipLibCheck is a defect a
+  // consumer would meet first. No emit: esbuild bundles.
+  "compilerOptions": {
+    "module": "node16",
+    "moduleResolution": "node16",
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "types": [],
+    "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitOverride": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": false,
+    "noEmit": true
+  },
+  "include": ["src"]
+}

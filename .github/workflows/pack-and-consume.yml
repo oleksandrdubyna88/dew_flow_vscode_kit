@@ -1,0 +1,50 @@
+name: pack-and-consume
+
+# The package as a consumer meets it (E3.S1): `npm pack` (whose `prepack` builds dist/), the tarball's file
+# list read from the tarball itself, an offline `npm install` of it into `test/consumer-fixture/`, a typecheck
+# against the INSTALLED `.d.ts`, an esbuild bundle with the extensions' flags, the bundle RUN under a
+# `vscode` stub, and the installed bin started through npm's shim — all in `scripts/pack-and-consume.mjs`.
+#
+# Reusable on purpose (epic 3 plan round, finding 0): `needs:` cannot reach a job in another workflow file,
+# so `ci.yml` calls this on every pull request and push, and `release.yml` (E3.S2) calls it again and makes
+# its publish job `needs:` that in-file call. `workflow_dispatch` runs it by hand.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pack-and-consume:
+    name: pack · install · bundle · run · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      # Both legs always finish: a release depends on the WHOLE matrix (common.development-workflow, "a
+      # release that shipped SOME of its platforms"), and a red leg should say which platform it was.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      # Before the checkout, as in ci.yml: a Windows runner converts to CRLF by default.
+      - name: LF on every platform
+        run: git config --global core.autocrlf false
+
+      # Pinned to commits exactly as ci.yml pins them. No submodules: the shared rules are not needed here.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      # The kit's devDependencies: the TypeScript and esbuild the script resolves from this checkout. The
+      # consumer's own install is offline — the kit has no runtime dependencies.
+      - name: Install
+        run: npm ci
+
+      - name: Pack and consume
+        run: npm run pack-and-consume

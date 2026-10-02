@@ -229,6 +229,23 @@ const html = renderHelpPage({ catalog, language: 'ru', display: display.config, 
 
 See [.agents/PROJECT.md](.agents/PROJECT.md) for the commands and the rules this repository follows.
 
+### Check the package as a consumer gets it
+
+```bash
+npm run pack-and-consume                          # pack → read the tarball → install → typecheck → bundle → run → bin
+node scripts/pack-and-consume.mjs --broken-import # the same with a misspelled import: must exit 1 at "typecheck"
+```
+
+`npm pack` builds `dist/` through `prepack` (the script deletes `dist/` first, so nothing stale can ship).
+The tarball is installed offline into a temporary copy of `test/consumer-fixture/` — a minimal extension
+that adapts `vscode` to the kit's ports as shown above — type-checked against the INSTALLED `.d.ts`,
+bundled with esbuild (`--bundle --external:vscode --format=cjs --platform=node`), run under node with a
+`vscode` stub, and the installed `vscode-webview-kit-help-digests` is started through npm's shim. Each line
+names its step; a failure names the step it stopped at. Nothing is downloaded: TypeScript and esbuild come
+from this repository's devDependencies, and the kit has no runtime dependencies. `npm test` runs both
+modes, so it rebuilds `dist/`; CI also runs it on its own on ubuntu and windows
+(`.github/workflows/pack-and-consume.yml`).
+
 ## License
 
 MIT

@@ -2,8 +2,9 @@
 
 > Being built along [../todo/PLAN_extract_the_kit.md](../todo/PLAN_extract_the_kit.md): epic 1 (the
 > machinery and the pure modules) and epic 2 (the display host, the help catalog, and the help page and
-> panel) have landed; the release pipeline (epic 3) has not, so nothing is published yet. This file
-> describes what exists and is rewritten as each module lands.
+> panel) have landed; of the release pipeline (epic 3), the pre-publish check that packs, installs, bundles
+> and runs the tarball (E3.S1) has landed, and the publishing half (E3.S2) has not, so nothing is published
+> yet. This file describes what exists and is rewritten as each module lands.
 
 ## What this package is
 
@@ -293,6 +294,37 @@ the consumer's display host alone; `render` and `handle` throw afterwards, and a
 **Growth** (plan §5): one panel holds four hooks and one write queue as long as the language writes not yet
 done; a closed panel holds nothing.
 
+## The release path — build, pack, consume (E3.S1)
+
+What a consumer receives is the TARBALL, not this working tree, so the tarball is what is checked before
+anything is published. `npm pack` runs `prepack` (`npm run build`: `dist/` cleaned and rebuilt by
+`tsconfig.build.json`) — `npm pack` does not run `prepublishOnly`, which is why `prepack` exists (epic 3 plan
+round, finding 1). `scripts/pack-and-consume.mjs` then consumes that tarball the way an extension does, in
+the OS temp dir, with nothing downloaded:
+
+```mermaid
+flowchart LR
+  src["src/**/*.ts"] -->|"prepack: npm run build"| dist["dist/ (CJS + .d.ts)"]
+  dist -->|"npm pack"| tgz["kit.tgz"]
+  tgz -->|"contents: tar headers read"| check{"dist/index.js, dist/index.d.ts, bin present; nothing outside files"}
+  check --> fixture["temp copy of test/consumer-fixture (file:../kit.tgz)"]
+  fixture -->|"npm install --offline"| installed["node_modules/@oleksandrdubyna88/vscode-webview-kit"]
+  installed -->|"tsc, node16, skipLibCheck false"| typed["typecheck against the installed .d.ts"]
+  typed -->|"esbuild bundle, external vscode, cjs, node"| bundle["dist/extension.js + dist/helpCatalog.js"]
+  bundle -->|"node run.mjs, vscode stub"| ran["help page, press, escapers, unhook"]
+  installed -->|"npm exec --no"| bin["vscode-webview-kit-help-digests over the bundled catalog"]
+  ran --> ok(["exit 0"])
+  bin --> ok
+```
+
+A failure stops the run at its step and names it (`FAILED at step "typecheck"`); `--broken-import` proves the
+typecheck is the step that catches a misspelled import, which esbuild alone bundles silently. The check runs
+in `npm test` (`src/test/packaging.test.ts`, both modes) and in the reusable
+`.github/workflows/pack-and-consume.yml` (`workflow_call` + `workflow_dispatch`, ubuntu and windows),
+which `ci.yml` calls and E3.S2's `release.yml` will call again so its publish job can `needs:` it — `needs:`
+cannot reach a job in another workflow file (finding 0). Details and red observations:
+[module_tests.md](module_tests.md).
+
 ## The test harness
 
 See [module_tests.md](module_tests.md): the page-script sandbox, the strict display fakes, the flow
@@ -309,10 +341,12 @@ catalogue, and what the suite does not prove.
   recorders `scripts/record-coai-display.mjs`, `scripts/record-coai-help.mjs` and
   `scripts/record-coai-help-page.mjs` over their shared `scripts/coai-modules.mjs` (extract coai sources at a
   ref, compile them with this repository's `@types` — coai's `helpPage.ts` imports `node:crypto` — and load
-  them), and `scripts/help-digests.mjs`.
+  them), `scripts/help-digests.mjs`, and `scripts/pack-and-consume.mjs` over `test/consumer-fixture/` (E3.S1;
+  `npm run pack-and-consume`). `package.json` scripts include `prepack: npm run build` (E3.S1).
 - **CI:** `.github/workflows/ci.yml` runs the whole chain — conventions check, plan lifecycle, typecheck,
   lint, test, build, `npm pack --dry-run` — on `ubuntu-latest` AND `windows-latest`, every action pinned to a
-  commit SHA; `pr-title.yml`, `coderabbit-review.yml` + `.coderabbit.yaml`, `dependabot.yml`.
+  commit SHA, and calls the reusable `pack-and-consume.yml` (E3.S1); `pr-title.yml`,
+  `coderabbit-review.yml` + `.coderabbit.yaml`, `dependabot.yml`.
 - The family rules, mounted at `.agents/conventions` (tracking `release`), and the Claude host adapter
   (`.claude/settings.json`, `.claude/hooks/`).
 

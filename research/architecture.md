@@ -21,7 +21,7 @@ while the help panel — the host half that mints a nonce per render — must.
 | Module | Files | Status |
 |---|---|---|
 | `text` | `asText.ts` | landed (E1.S2) |
-| `webview` | `escape.ts` (`escapeHtml`, `escapeHtmlForHighlighting`, `jsonForScript`), `nonce.ts`, `writeQueue.ts`; `posted.ts` — a posted message read as own members only, shared by both message readers | landed (E1.S2; `posted.ts` E2.S3) |
+| `webview` | `escape.ts` (`escapeHtml`, `escapeHtmlForHighlighting`, `jsonForScript`), `nonce.ts`, `writeQueue.ts`; `posted.ts` — a posted message read as own members only, shared by both message readers; `hooks.ts` (`hookAll`, internal) — a constructor's hooks made all or none | landed (E1.S2; `posted.ts` E2.S3; `hooks.ts` epic 2 code round) |
 | `settings` | `settingWritten.ts` — the "a view setting could not be saved" reporter, consumer funnel injected | landed (E1.S2) |
 | `display` — pure halves | `config.ts` (`createDisplayConfig`, prefix validation), `zoom.ts`, `tone.ts`, `messages.ts` | landed (E1.S3; `messages.ts` E2.S1) |
 | `display` — host | `port.ts` (`ConfigurationPort`, `WebviewPort`), `press.ts` (`readPress`), `host.ts` (`createDisplayHost`) | landed (E2.S1) |
@@ -50,10 +50,11 @@ flowchart TB
   end
   subgraph kit["Kit — src/display, no vscode import"]
     readPress["readPress: known type, finite delta reduced to one step, field absent or empty"]
-    host["createDisplayHost: clamp, one write per press, registry of attached pages"]
+    host["createDisplayHost: clamp, one write per press, registry of attached pages, listeners made all or none"]
     queues["WriteQueue, one per setting"]
     messages["uiScaleMessage / textToneMessage"]
   end
+  failed["reporterFailed, default console.error"]
   buttons -- "postMessage: type, delta, field" --> panel
   panel -- "host.press(message, source)" --> readPress
   readPress -- "Press, or a typed rejection" --> host
@@ -63,6 +64,7 @@ flowchart TB
   host --> messages
   messages -- "to every ATTACHED page; false or a rejection: report and detach" --> ports
   ports -- "postMessage" --> repaint
+  host -- "a reporter or page dispose hook that throws at the detached edge of a push" --> failed
 ```
 
 **The trust boundary** is `press.ts`. A message is read as own properties only; it must carry `type`
@@ -84,7 +86,17 @@ pushes only the changed setting's message, to attached pages only; a `postMessag
 or rejects is caught, reported through `DisplayReporter.pushNotDelivered`, and detaches that page; a push
 never runs inside the write queue, so a page that never answers cannot block a write. A failed write is
 reported once through `settingWritten` with the consumer's `settingNotSaved` funnel. `dispose()` unhooks
-both setting listeners and every page; `attach` after it throws.
+both setting listeners and every page; `attach`, `press` and `apply` after it throw synchronously, and a
+press still queued behind a write in flight is dropped when the queue reaches it — the in-flight write
+lands, nothing after it does (gate, epic 2 code round, finding 0).
+
+**Lifetime edges** (same round, findings 2 and 4). The two setting listeners are made all or none through
+`webview/hooks.ts`'s `hookAll`: a registration that throws undoes the ones before it, newest first, before
+its error is rethrown — the help panel's four hooks are made the same way. A push is a detached execution
+whose outermost frame catches everything: a `pushNotDelivered` that throws (the page is already detached)
+or a page dispose hook that throws goes to the optional `DisplayHostOptions.reporterFailed`, which
+defaults to `console.error` — a global, so no `node:` import — and one that throws itself is logged to
+`console.error` with both errors. The promise a push leaves behind never rejects.
 
 **Byte-compatibility.** For coai's configuration (`ConnectOtherAIs`, prefix `coai`, section `coai`) the
 markup, scripts, CSS, pushed messages and written values equal what coai's own modules produced at
@@ -166,7 +178,11 @@ accepted: no articles; an empty or repeated id; a body missing any of the six fi
 translated); a module for a language the help does not have (or for `en`); a translated body for an article
 the catalog does not have; a `from` entry with no body beside it; a `from` that is not 8 lowercase hex. The
 languages are derived — English, then each language with a module, in `HELP_LANGUAGES` order. Input is
-never written; the catalog is a new, frozen object.
+never written, and never held (gate, epic 2 code round, finding 5): every article, body, translation and
+`from` map is COPIED first — a body as its six fields, each read once — and the copy is what is checked,
+frozen all the way down and kept, so an edit to the input after `createCatalog` changes nothing `bodyFor`
+or the page shows. The translated-body check looks ids up in a `Set` made once per catalog, and a page
+render walks `catalog.articles` once rather than finding each article by id (findings 6 and 7).
 
 **What a consumer's CI asserts** (epic 2 plan round, finding 0). `staleTranslations(catalog)` lists every
 translated body that is `stale` or `unknown` as `{ article, language, stale, from, current }` (`from` is
@@ -204,7 +220,7 @@ flowchart TB
     dhost["its ONE display host"]
   end
   subgraph kit["Kit — src/help, no vscode import"]
-    panel["createHelpPanel: render on open and on a language change; four hooks; dispose unhooks all"]
+    panel["createHelpPanel: render on open and on a language change; four hooks made all or none; dispose unhooks all"]
     read["readHelpMessage: a press, or a language the catalog offers; anything else refused with a reason"]
     page["renderHelpPage: pure, nonce injected, CSP, index, articles, notes, appendix"]
     script["pageScript: the one script under the nonce: routing, search, language select"]
@@ -265,7 +281,9 @@ the language against all five and ignored other types silently; the kit narrows 
 
 **The panel** (`panel.ts`). `createHelpPanel` renders first, then makes four hooks: the display attachment
 (the consumer's display host pushes size and tone to this page like any other), the language setting's
-change listener (re-render), the port's message listener, and the port's dispose event. A press goes to
+change listener (re-render), the port's message listener, and the port's dispose event — all or none
+through `hookAll`, so a later registration that throws detaches the display attachment and releases the
+earlier listeners before its error is rethrown (gate, epic 2 code round, finding 3). A press goes to
 `display.apply`, which writes once and pushes the new value live — a size change never re-renders, so the
 reader keeps their place; a language goes through the panel's own `WriteQueue` and `settingWritten` with the
 consumer's `settingNotSaved` funnel, naming `help`. The stored language reads as English when it is junk or

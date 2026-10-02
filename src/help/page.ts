@@ -107,10 +107,18 @@ export function searchIndex(catalog: Catalog, language: HelpLanguage): readonly 
 /** The article markup: the title, the note over it when there is one, five labelled sections in the fixed order, the appendix. Empty for an unknown id. */
 export function articleHtml(catalog: Catalog, id: ArticleId, language: HelpLanguage, appendix: HelpAppendix = NO_APPENDIX): string {
   const article = catalog.articles.find((candidate) => candidate.id === id);
-  if (article === undefined) {
-    return '';
-  }
-  const shown = bodyFor(catalog, article, offeredLanguage(catalog, language));
+
+  return article === undefined ? '' : renderedArticle(catalog, article, offeredLanguage(catalog, language), appendix);
+}
+
+/**
+ * One article's markup, for an article already in hand and a language already checked — what
+ * {@link renderHelpPage} calls as it walks the catalog, so a render is one pass over the articles rather
+ * than a search for each of them (gate, epic 2 code round, finding 7).
+ */
+function renderedArticle(catalog: Catalog, article: HelpArticle, language: HelpLanguage, appendix: HelpAppendix): string {
+  const { id } = article;
+  const shown = bodyFor(catalog, article, language);
   const labels = SECTION_LABELS[language];
 
   return `<article data-article="${escapeHtml(id)}">
@@ -133,7 +141,7 @@ export function renderHelpPage(options: HelpPageOptions): string {
   const textTone = options.textTone ?? 0;
   const appendix = options.appendix ?? NO_APPENDIX;
   const index = searchIndex(catalog, language);
-  const articles = Object.fromEntries(catalog.articles.map((article) => [article.id, articleHtml(catalog, article.id, language, appendix)]));
+  const articles = Object.fromEntries(catalog.articles.map((article) => [article.id, renderedArticle(catalog, article, language, appendix)]));
 
   return `<!DOCTYPE html>
 <html>

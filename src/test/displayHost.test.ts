@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { createDisplayConfig } from '../display/config';
-import { createDisplayHost, type DisplaySettings, type PushNotDelivered } from '../display/host';
+import { createDisplayHost, type DisplayReporter, type DisplaySettings, type PushNotDelivered } from '../display/host';
 import { textToneMessage, uiScaleMessage } from '../display/messages';
+import type { WebviewPort } from '../display/port';
 import type { Press } from '../display/press';
 import { clampTone } from '../display/tone';
 import { clampScale } from '../display/zoom';
@@ -25,6 +26,8 @@ const SETTINGS: DisplaySettings = {
 };
 const ZOOM_UP: Press = { kind: 'zoom', step: 1 };
 const TONE_DOWN: Press = { kind: 'tone', step: -1 };
+/** A reporter for a test that asserts neither funnel. */
+const QUIET: DisplayReporter = { settingNotSaved: async () => undefined, pushNotDelivered: () => undefined };
 
 /** A host over fresh fakes, with both reporters recording. `stored` is keyed `section.key`. */
 function rig(stored: Readonly<Record<string, unknown>> = {}) {
@@ -321,3 +324,164 @@ test('dispose() unhooks every subscription: no setting listener, no dispose list
   assert.equal(b.posted.length, 2);
   assert.throws(() => host.attach(new FakeWebview('late')), /disposed/);
 });
+
+test('press() and apply() after dispose() are refused at once, as attach() is, and write nothing', async () => {
+  const { configuration, host, notSaved } = rig(bothAt(0));
+  host.dispose();
+
+  const outcomes = [
+    () => host.press({ type: 'zoom', delta: 1, field: '' }, 'chat'),
+    () => host.apply(TONE_DOWN, 'chat'),
+  ].map((attempt) => {
+    try {
+      void attempt();
+      return 'accepted';
+    } catch (refusal: unknown) {
+      return refusal instanceof Error ? refusal.message : String(refusal);
+    }
+  });
+  await settle();
+
+  assert.deepEqual(configuration.writes, [], 'a disposed host wrote a setting');
+  assert.deepEqual(outcomes, [
+    'the display host is disposed: a press now would write a setting no page is kept in step with',
+    'the display host is disposed: a press now would write a setting no page is kept in step with',
+  ]);
+  assert.deepEqual(notSaved, [], 'a refusal is the caller\'s programming error, not a setting that could not be saved');
+});
+
+test('a press still QUEUED when dispose() runs is never written; the one already writing lands, and both resolve', { timeout: 2000 }, async () => {
+  const { configuration, host, notSaved } = rig(bothAt(0));
+  configuration.hold();
+  const writing = host.apply(ZOOM_UP, 'chat');
+  const queued = host.apply(ZOOM_UP, 'chat');
+  await settle();
+
+  host.dispose();
+  configuration.release();
+  await Promise.all([writing, queued]);
+
+  assert.deepEqual(configuration.writes.map((w) => w.value), [1], 'a press queued behind a held write was written after dispose');
+  assert.deepEqual(notSaved, [], 'a press dropped by dispose is not a setting that could not be saved');
+});
+
+test('a host whose second setting cannot be watched unhooks the first and rethrows — nothing is left hooked with no dispose to reach it', () => {
+  const configuration = new FakeConfiguration([SETTINGS.uiScale, SETTINGS.textTone], bothAt(0));
+  const refused = new Error('the textTone watch was refused');
+  configuration.failNextWatch(SETTINGS.textTone, refused);
+
+  assert.throws(
+    () => createDisplayHost({ config: CONFIG, settings: SETTINGS, configuration, reporter: QUIET }),
+    (reason: unknown) => reason === refused,
+  );
+  assert.equal(configuration.liveListeners(), 0, 'the uiScale listener outlived a host that was never made');
+});
+
+for (const delivery of ['refused', 'rejects'] as const) {
+  test(`a pushNotDelivered that throws for a page that ${delivery} is no unhandled rejection: the page is let go and reporterFailed is told`, async () => {
+    const configuration = new FakeConfiguration([SETTINGS.uiScale, SETTINGS.textTone], bothAt(0));
+    const broken = new Error('the consumer\'s log line broke');
+    const told: unknown[] = [];
+    const host = createDisplayHost({
+      config: CONFIG,
+      settings: SETTINGS,
+      configuration,
+      reporter: { settingNotSaved: QUIET.settingNotSaved, pushNotDelivered: () => { throw broken; } },
+      reporterFailed: (error) => { told.push(error); },
+    });
+    const page = new FakeWebview('page');
+    host.attach(page);
+    page.delivery = delivery;
+
+    const unhandled = await unhandledRejectionsDuring(async () => {
+      configuration.change(SETTINGS.uiScale, 2);
+      await settle();
+    });
+
+    assert.deepEqual(unhandled, [], 'the detached push rejected and nobody observed it');
+    assert.equal(page.liveDisposeListeners(), 0, 'the page was not let go before the report');
+    assert.deepEqual(told, [broken], 'the reporter\'s own failure was swallowed');
+    configuration.change(SETTINGS.uiScale, 3);
+    assert.equal(page.posted.length, 3, 'a detached page was posted to again');
+  });
+}
+
+test('a page whose own dispose hook throws as a failed push lets it go is no unhandled rejection either: reporterFailed is told that error', async () => {
+  const configuration = new FakeConfiguration([SETTINGS.uiScale, SETTINGS.textTone], bothAt(0));
+  const broken = new Error('the page\'s dispose hook broke');
+  const told: unknown[] = [];
+  const notices: PushNotDelivered[] = [];
+  const host = createDisplayHost({
+    config: CONFIG,
+    settings: SETTINGS,
+    configuration,
+    reporter: { settingNotSaved: QUIET.settingNotSaved, pushNotDelivered: (notice) => { notices.push(notice); } },
+    reporterFailed: (error) => { told.push(error); },
+  });
+  const page = new FakeWebview('page', 'refused');
+  const adapted: WebviewPort = { postMessage: page.postMessage.bind(page), onDidDispose: () => ({ dispose: () => { throw broken; } }) };
+
+  const unhandled = await unhandledRejectionsDuring(async () => {
+    host.attach(adapted);
+    await settle();
+  });
+
+  assert.deepEqual(unhandled, [], 'the detached push rejected and nobody observed it');
+  assert.deepEqual(told, [broken]);
+  assert.deepEqual(notices, [], 'the hook threw before the notice, so the error is what the consumer hears');
+  configuration.change(SETTINGS.uiScale, 3);
+  assert.equal(page.posted.length, 2, 'a page let go was posted to again');
+});
+
+test('without a reporterFailed a throwing pushNotDelivered goes to console.error — and one that throws itself does too, with both errors', async () => {
+  const configuration = new FakeConfiguration([SETTINGS.uiScale, SETTINGS.textTone], bothAt(0));
+  const broken = new Error('the consumer\'s log line broke');
+  const alsoBroken = new Error('the consumer\'s reporterFailed broke');
+  const plain = createDisplayHost({
+    config: CONFIG, settings: SETTINGS, configuration,
+    reporter: { settingNotSaved: QUIET.settingNotSaved, pushNotDelivered: () => { throw broken; } },
+  });
+  const doubly = createDisplayHost({
+    config: CONFIG, settings: SETTINGS, configuration,
+    reporter: { settingNotSaved: QUIET.settingNotSaved, pushNotDelivered: () => { throw broken; } },
+    reporterFailed: () => { throw alsoBroken; },
+  });
+  plain.attach(new FakeWebview('plain', 'refused'));
+  doubly.attach(new FakeWebview('doubly', 'rejects'));
+
+  const logged: unknown[][] = [];
+  const original = console.error;
+  console.error = (...args: unknown[]) => { logged.push(args); };
+  let unhandled: unknown[];
+  try {
+    unhandled = await unhandledRejectionsDuring(settle);
+  } finally {
+    console.error = original;
+  }
+
+  assert.deepEqual(unhandled, []);
+  assert.equal(logged.length, 2, `console.error was called ${logged.length} times`);
+  assert.ok(logged.some((args) => args.includes(broken) && !args.includes(alsoBroken)), 'the default reporterFailed did not log the reporter\'s error');
+  assert.ok(logged.some((args) => args.includes(broken) && args.includes(alsoBroken)), 'a throwing reporterFailed lost one of the two errors');
+});
+
+/** Two turns of the event loop: every detached delivery has settled, and Node has had its chance to report a rejection. */
+async function settle(): Promise<void> {
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+}
+
+/** Every unhandled rejection Node reports while `run` runs and the loop settles after it. */
+async function unhandledRejectionsDuring(run: () => Promise<void>): Promise<unknown[]> {
+  const seen: unknown[] = [];
+  const listener = (reason: unknown): void => { seen.push(reason); };
+  process.on('unhandledRejection', listener);
+  try {
+    await run();
+    await settle();
+  } finally {
+    process.off('unhandledRejection', listener);
+  }
+
+  return seen;
+}

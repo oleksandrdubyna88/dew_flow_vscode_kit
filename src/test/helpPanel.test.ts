@@ -324,3 +324,49 @@ test('a pending language write still lands after dispose, as a pending display w
 
   assert.deepEqual(configuration.writes.map((w) => w.value), ['ru']);
 });
+
+/** The three registrations a panel makes AFTER its display attachment, each made to throw in turn. */
+const LATER_REGISTRATIONS: readonly { what: string; break: (configuration: FakeConfiguration, panel: FakeHelpPanelPort, refused: Error) => void }[] = [
+  { what: 'language listener', break: (configuration, _panel, refused) => { configuration.failNextWatch(LANGUAGE, refused); } },
+  { what: 'message listener', break: (_configuration, panel, refused) => { panel.onDidReceiveMessage = () => { throw refused; }; } },
+  {
+    what: 'own dispose listener',
+    break: (_configuration, panel, refused) => {
+      // The display attachment hooks the panel's dispose event first; the panel's own hook is the second.
+      const hook = panel.onDidDispose.bind(panel);
+      let calls = 0;
+      panel.onDidDispose = (listener) => {
+        calls += 1;
+        if (calls === 2) {
+          throw refused;
+        }
+        return hook(listener);
+      };
+    },
+  },
+];
+
+for (const registration of LATER_REGISTRATIONS) {
+  test(`a panel whose ${registration.what} cannot be registered rethrows and leaves nothing hooked: the display attachment is detached`, () => {
+    const configuration = new FakeConfiguration([LANGUAGE, SETTINGS.uiScale, SETTINGS.textTone], stored('en'));
+    const display = createDisplayHost({
+      config: COAI, settings: SETTINGS, configuration,
+      reporter: { settingNotSaved: async () => undefined, pushNotDelivered: () => undefined },
+    });
+    const panel = new FakeHelpPanelPort('help');
+    const refused = new Error(`${registration.what} was refused`);
+    registration.break(configuration, panel, refused);
+
+    assert.throws(
+      () => createHelpPanel({ catalog: fullCatalog(), display, languageSetting: LANGUAGE, configuration, panel, settingNotSaved: async () => undefined }),
+      (reason: unknown) => reason === refused,
+    );
+    assert.equal(panel.liveDisposeListeners(), 0, 'a dispose listener — the display attachment\'s or the panel\'s — outlived a panel that was never made');
+    assert.equal(panel.liveMessageListeners(), 0, 'the message listener outlived a panel that was never made');
+    assert.equal(configuration.liveListeners(LANGUAGE), 0, 'the language listener outlived a panel that was never made');
+    assert.equal(configuration.liveListeners(), 2, 'the display host is the consumer\'s and must survive');
+    const pushed = panel.posted.length;
+    configuration.change(SETTINGS.uiScale, 3);
+    assert.equal(panel.posted.length, pushed, 'the display host still pushes to a panel that was never made');
+  });
+}

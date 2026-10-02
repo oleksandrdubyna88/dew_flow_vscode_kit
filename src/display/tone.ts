@@ -1,5 +1,5 @@
 import { escapeHtml } from '../webview/escape';
-import type { DisplayConfig } from './config';
+import { usablePrefix, type DisplayConfig } from './config';
 
 /**
  * The ± tone of the text, beside the ± size of it — the pure half.
@@ -53,7 +53,7 @@ export function toneColour(offset: number, config: DisplayConfig, base = 'var(--
     return '';
   }
   const mixed = Math.abs(clamped) * MIX_PER_STEP;
-  const target = clamped > 0 ? `var(--${config.cssPrefix}-tone-away)` : `var(--${config.cssPrefix}-tone-warm)`;
+  const target = clamped > 0 ? `var(--${usablePrefix(config.cssPrefix)}-tone-away)` : `var(--${usablePrefix(config.cssPrefix)}-tone-warm)`;
 
   return `color-mix(in srgb, ${base} ${100 - mixed}%, ${target} ${mixed}%)`;
 }
@@ -75,7 +75,7 @@ export function toneColours(offset: number, config: DisplayConfig): { readonly t
  */
 export function toneStyle(offset: number, config: DisplayConfig): string {
   const { text, read } = toneColours(offset, config);
-  const p = config.cssPrefix;
+  const p = usablePrefix(config.cssPrefix);
 
   return text.length === 0 ? '' : `--${p}-text: ${text}; --${p}-read: ${read}; color: var(--${p}-text);`;
 }
@@ -95,7 +95,7 @@ export function toneControlHtml(offset: number, config: DisplayConfig): string {
  * `data-tone` attribute and `toneOffset` id — sharing the zoom's would cross-wire the two controls.
  */
 export function toneScript(config: DisplayConfig, handle = 'vscode'): string {
-  const p = config.cssPrefix;
+  const p = usablePrefix(config.cssPrefix);
 
   return `
   for (const toneButton of document.querySelectorAll('button[data-tone]')) {
@@ -117,7 +117,7 @@ export function toneScript(config: DisplayConfig, handle = 'vscode'): string {
 
 /** Shared look for the control, and the two direction targets — defaults on the ROOT so a page can override. */
 export function toneCss(config: DisplayConfig): string {
-  const p = config.cssPrefix;
+  const p = usablePrefix(config.cssPrefix);
 
   return `
   /* The defaults sit on the ROOT so a page's own body rule can override them: a declaration on the

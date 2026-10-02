@@ -74,3 +74,10 @@ jobs:
       # What a publish would contain, read before any publish exists: `files: ["dist"]` and nothing else.
       - name: Pack
         run: npm pack --dry-run
+
+  # The PACKED tarball, installed, bundled and run on both platforms (E3.S1). A reusable workflow, so the
+  # release workflow can call the same job and make its publish depend on it (epic 3 plan round, finding 0).
+  pack-and-consume:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/pack-and-consume.yml

@@ -1,7 +1,8 @@
 # PLAN — extract the help / text-size / text-tone / setting-write modules into one shared package
 
 > Status: **in progress, 2026-10-02** — epic 1 and epic 2 (E2.S1, E2.S2, E2.S3) have landed on their
-> branches; epic 2's code round, epic 3 and the consumer switches are open. Scope: this repository's first release,
+> branches, and E3.S1 (the pre-publish consumer fixture) on epic 3's; E3.S2, epic 3's code round and the
+> consumer switches are open. Scope: this repository's first release,
 > `@oleksandrdubyna88/vscode-webview-kit` 0.1.0, and the switch of its two consumers.
 >
 > Cross-repository: the consumer side is named in `wsl_care · todo/PLAN_shared_vscode_kit.md` (the
@@ -265,6 +266,23 @@ webview→host trust boundary, publishing credentials).
 - **E3.S1 — Pre-publish consumer fixture** (Opus). `test/consumer-fixture/`,
   `scripts/pack-and-consume.mjs` (pack → install → esbuild bundle → run under node with a `vscode`
   stub), a `pack-and-consume` CI job on both OSes. Tests: a fixture with a misspelled import goes red.
+  *As built:* eight named steps — pack, contents, fixture, install, typecheck, bundle, run, bin — each a
+  `node <script>` child with no shell and npm's `npm_*` variables removed (so a run under `npm test` or
+  `npm publish --dry-run` cannot hand its prefix or dry-run to the inner npm). The pack step DELETES `dist/`
+  first, so only `prepack` can put it into the tarball (finding 1, made unskippable); the contents are read
+  from the tarball's own tar headers, and what may ship is derived from the manifest (`files`, `bin`) plus
+  npm's three, not retyped. The fixture type-checks with `node16` resolution and `skipLibCheck: false`
+  against a local slice of `@types/vscode` (`src/vscode.d.ts`; the run downloads nothing); esbuild runs
+  through its JS API with the four CLI flags' options and every input must lie inside the temp copy. The
+  bin is checked by USING it — `npm exec --no` over the fixture's bundled catalog, whose `from` is a literal,
+  must answer "every translation was made from the current English" — rather than `--help`, which
+  `help-digests` does not have (it would exit 2); on POSIX the `.bin` link is also executed directly. The
+  misspelling is a flag, `--broken-import`, rewriting `createDisplayHost` in the copy. Both modes run in
+  `npm test`, at the end of `src/test/packaging.test.ts` rather than a file of their own: the pack rebuilds
+  `dist/` while that file's dry-run pack walks it, and only tests within one file are serial — so `npm test`
+  now rebuilds `dist/` (about 12 s of a 20 s suite on Windows). `pack-and-consume.yml` is reusable
+  (`workflow_call` + `workflow_dispatch`, finding 0), called by `ci.yml`; `npm run pack-and-consume` runs it by
+  hand.
 - **E3.S2 — release-please, `release.yml`, publish 0.1.0** (Fable: publishing credentials and the supply
   chain of two extensions). `release-please-config.json`, manifest, `release-please.yml`, `release.yml`
   (`needs: pack-and-consume`, `id-token: write`, `npm publish --provenance --access public` with

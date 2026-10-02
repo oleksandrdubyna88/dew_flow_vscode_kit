@@ -14,7 +14,8 @@ import { test } from 'node:test';
  *
  * The installed layout is built by hand from this build's `out/` (minus the tests), because `dist/` is
  * what `npm run build` makes and the suite runs on `out/`; what npm's own installer does with the bin —
- * the shims, the exec bit — is E3.S1's consumer fixture, which installs the packed tarball for real.
+ * the shims, the exec bit — is E3.S1's consumer fixture, which installs the packed tarball for real: the
+ * two `pack-and-consume` tests at the end of this file.
  */
 
 const ROOT = path.resolve(__dirname, '..', '..');
@@ -98,4 +99,44 @@ test('the script starts with a node shebang, as a bin must', () => {
   const text = fs.readFileSync(path.join(ROOT, SCRIPT), 'utf8');
 
   assert.ok(text.startsWith('#!/usr/bin/env node\n'));
+});
+
+/*
+ * E3.S1 — the PACKED tarball, installed by npm, consumed the way an extension consumes it.
+ *
+ * `scripts/pack-and-consume.mjs` packs this repository (its `prepack` builds `dist/`), installs the tarball
+ * into a copy of `test/consumer-fixture/`, type-checks the fixture against the INSTALLED `.d.ts`, bundles it
+ * with the extensions' esbuild flags, runs the bundle under node with a `vscode` stub, and starts the
+ * installed bin through npm's own shim. These two tests live in THIS file on purpose: the pack rebuilds
+ * `dist/`, the dry-run pack above walks `dist/`, and tests inside one file run one after another while
+ * files run side by side — in another file the two could meet halfway through a rebuild.
+ */
+
+const PACK_AND_CONSUME = path.join(ROOT, 'scripts', 'pack-and-consume.mjs');
+
+function packAndConsume(...args: string[]): { readonly status: number | null; readonly stdout: string; readonly stderr: string } {
+  const run = spawnSync(process.execPath, [PACK_AND_CONSUME, ...args], { cwd: ROOT, encoding: 'utf8', timeout: 240_000 });
+  assert.equal(run.error, undefined, `pack-and-consume did not run: ${String(run.error)}`);
+
+  return run;
+}
+
+test('pack-and-consume: the packed tarball installs, type-checks against its own .d.ts, bundles, runs under a vscode stub, and its bin starts through npm', { timeout: 300_000 }, () => {
+  const run = packAndConsume();
+
+  assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
+  assert.match(run.stdout, /^pack-and-consume: ok +typecheck\b/m);
+  assert.match(run.stdout, /^pack-and-consume: ok +run\b/m);
+  assert.match(run.stdout, /^pack-and-consume: ok +bin\b/m);
+  assert.match(run.stdout, /^pack-and-consume: every step passed\.$/m);
+});
+
+test('pack-and-consume goes red AT THE TYPECHECK when the fixture imports a name the package does not export (createDisplayHots)', { timeout: 300_000 }, () => {
+  const run = packAndConsume('--broken-import');
+
+  assert.equal(run.status, 1, `${run.stdout}\n${run.stderr}`);
+  assert.match(run.stderr, /pack-and-consume: FAILED at step "typecheck"/);
+  assert.match(run.stderr, /createDisplayHots/);
+  assert.match(run.stdout, /^pack-and-consume: ok +install\b/m, 'the steps before the typecheck should have passed');
+  assert.doesNotMatch(run.stdout, /^pack-and-consume: ok +(bundle|run|bin)\b/m, 'nothing after the typecheck may run');
 });

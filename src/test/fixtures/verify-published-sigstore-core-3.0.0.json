@@ -1,0 +1,51 @@
+{
+  "$recorded": "2026-10-02, from registry.npmjs.org, by scripts/verify-published.mjs gather() for @sigstore/core@3.0.0 — a real package published from GitHub Actions with provenance; trimmed to the fields verdict() reads",
+  "expected": {
+    "name": "@sigstore/core",
+    "version": "3.0.0",
+    "repository": "https://github.com/sigstore/sigstore-js",
+    "workflow": ".github/workflows/release.yml",
+    "ref": "refs/heads/main"
+  },
+  "view": {
+    "name": "@sigstore/core",
+    "version": "3.0.0",
+    "dist": {
+      "integrity": "sha512-NgbJ+aW9gQl/25+GIEGYcCyi8M+ng2/5X04BMuIgoDfgvp18vDcoNHOQjQsG9418HGNYRxG3vfEXaR1ayD37gg==",
+      "attestations": {
+        "url": "https://registry.npmjs.org/-/npm/v1/attestations/@sigstore%2fcore@3.0.0",
+        "provenance": {
+          "predicateType": "https://slsa.dev/provenance/v1"
+        }
+      }
+    }
+  },
+  "statement": {
+    "_type": "https://in-toto.io/Statement/v1",
+    "predicateType": "https://slsa.dev/provenance/v1",
+    "subject": [
+      {
+        "name": "pkg:npm/%40sigstore/core@3.0.0",
+        "digest": {
+          "sha512": "3606c9f9a5bd81097fdb9f86204198702ca2f0cfa7836ff95f4e0132e220a037e0be9d7cbc37283473908d0b06f78d7c1c63584711b7bdf117691d5ac83dfb82"
+        }
+      }
+    ],
+    "predicate": {
+      "buildDefinition": {
+        "buildType": "https://slsa-framework.github.io/github-actions-buildtypes/workflow/v1",
+        "externalParameters": {
+          "workflow": {
+            "ref": "refs/heads/main",
+            "repository": "https://github.com/sigstore/sigstore-js",
+            "path": ".github/workflows/release.yml"
+          }
+        }
+      }
+    }
+  },
+  "audit": {
+    "status": 0,
+    "stdout": "audited 1 package in 0s\n\n1 package has a verified registry signature\n\n1 package has a verified attestation\n(use --json --include-attestations to view attestation details)\n\n"
+  }
+}

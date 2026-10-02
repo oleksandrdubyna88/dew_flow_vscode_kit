@@ -1,8 +1,10 @@
 # PLAN — extract the help / text-size / text-tone / setting-write modules into one shared package
 
 > Status: **in progress, 2026-10-02** — epic 1 and epic 2 (E2.S1, E2.S2, E2.S3) have landed on their
-> branches, and E3.S1 (the pre-publish consumer fixture) on epic 3's; E3.S2, epic 3's code round and the
-> consumer switches are open. Scope: this repository's first release,
+> branches, and E3.S1 (the pre-publish consumer fixture) and E3.S2 (release-please and `release.yml`, no
+> credential used yet) on epic 3's; epic 3's code round, DoD part B (the first credentialed release, after
+> the owner's one-time setup) and the consumer switches are open. Nothing is published. Scope: this
+> repository's first release,
 > `@oleksandrdubyna88/vscode-webview-kit` 0.1.0, and the switch of its two consumers.
 >
 > Cross-repository: the consumer side is named in `wsl_care · todo/PLAN_shared_vscode_kit.md` (the
@@ -287,6 +289,47 @@ webview→host trust boundary, publishing credentials).
   chain of two extensions). `release-please-config.json`, manifest, `release-please.yml`, `release.yml`
   (`needs: pack-and-consume`, `id-token: write`, `npm publish --provenance --access public` with
   `NPM_TOKEN`, SHA-pinned actions); README "Release and rollback"; research docs; POST_DEPLOY stamped.
+  *As built (pipeline only — no secret exists yet, nothing is published, so POST_DEPLOY is not stamped with
+  a verification: its stamp reads "never, as of 2026-10-02"):* **First version.** `.release-please-manifest.json`
+  is EMPTY and `release-please-config.json` sets `initial-version: 0.1.0`. The siblings' shape (a manifest
+  naming the current version) was refuted for this repository by reading release-please 17 as bundled in
+  `release-please-action` v5.0.0: with no tag matching it, a manifest version other than 0.0.0 is treated
+  as released and the next one is cut (0.1.1 / 0.2.0), and the node strategy's own default first version
+  is 1.0.0. Config: one `node` package at `.`, `include-component-in-tag: false` (tag `v0.1.0`),
+  `exclude-paths: [".github"]`, NOT a draft (no assets to wait for, and a draft raises no
+  `release: published`), and changelog sections visible exactly for feat, fix, perf, revert — release-please
+  skips a release whose notes are empty, so a visible section IS a releasing type — with docs, test, chore,
+  refactor, ci, build hidden. **`release-please.yml`**: push to `main` + `workflow_dispatch`; a first step
+  that fails naming both App secrets when either is missing; `create-github-app-token` (v3.2.0, `app-id` kept
+  although deprecated, because the secret holds the numeric ID the siblings use) and `release-please-action`
+  (v5.0.0) with that token; the job's own permissions are `contents: read` — narrower than the siblings',
+  since every write is the App's (unproven until the first run). **`release.yml`**: `release: published`
+  only; `guard` (`.github/scripts/release-guard.mjs`: tag exactly `v<major>.<minor>.<patch>`, ref = that tag,
+  not draft or pre-release, author type `Bot`, checkout = `GITHUB_SHA`, `git merge-base --is-ancestor` on
+  `origin/main` over a full-history checkout, package.json version = tag), then the reusable
+  `pack-and-consume` call `needs: guard`, then `publish` `needs: [guard, pack-and-consume]`, `environment:
+  npm`, `contents: read` + `id-token: write` on that job only: NPM_TOKEN check (exit 1), checkout of the tag,
+  setup-node with `registry-url` and no cache, the guard again on that checkout, `npm ci`, `npm test`, `npm
+  publish --provenance --access public` with `NODE_AUTH_TOKEN`, then `scripts/verify-published.mjs` and
+  `scripts/pack-and-consume.mjs --published` (both reading `$TARGET`). **Beyond the story's list**, each for a
+  stated reason: `verify-published.mjs` also checks the provenance IDENTITY (repository, workflow path, ref)
+  and that the statement's sha512 is the served `dist.integrity` — `npm audit signatures` alone does not say
+  WHO built it; `pack-and-consume --published` (only the pack step and the expected version change) so
+  "the consumer fixture against the published version" is one command; `scripts/lib/npm.mjs` extracted from
+  pack-and-consume (`npmCli`, `childEnv`) plus `anonymousEnv`, so the registry is asked as anybody would ask
+  it. **`pr-title.yml`** got coai's docs-only step back (coai main `85085850`) with `contents: read`;
+  `docs-only-title.mjs` needed ONE adaptation — coai's `pkg + '/'` prefix never matches a root package, so
+  the verbatim copy was inert here (red first: 5 of 8 ported tests) — and now drops `exclude-paths` files
+  first, as release-please does. **POST_DEPLOY.md**: four items, all commands — item 1's old check (`npm view
+  <name> version`) and item 2's (`npm pack <name> --dry-run`) exit 0 whatever they print once the package
+  exists, so they are now
+  `verify-published.mjs --check version` and `pack-and-consume.mjs --published` (whose contents step fails
+  without `dist/index.js` / `dist/index.d.ts`), plus `--check provenance` and `--check signatures`; the
+  stamp gained the date the "never" was observed, which `post-deploy-check.mjs` requires. Tests: 47 new
+  (409 in all), every new check shown red by a one-edit break restored by SHA-256 (research/module_tests.md
+  lists each); actionlint 1.7.12 (with shellcheck) 0 errors over all six workflows. **Left to DoD B:** the
+  owner's setup (README "What the owner creates once"), the first run of each workflow, and trusted
+  publishing.
 
 **Order and what is left to the consumers.** E1 → E2 → E3 strictly; publishing finishes before any
 consumer switches. The ConnectOtherAIs switch (its consumer-level tests, the `stampTranslations`

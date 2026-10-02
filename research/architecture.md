@@ -3,8 +3,10 @@
 > Being built along [../todo/PLAN_extract_the_kit.md](../todo/PLAN_extract_the_kit.md): epic 1 (the
 > machinery and the pure modules) and epic 2 (the display host, the help catalog, and the help page and
 > panel) have landed; of the release pipeline (epic 3), the pre-publish check that packs, installs, bundles
-> and runs the tarball (E3.S1) has landed, and the publishing half (E3.S2) has not, so nothing is published
-> yet. This file describes what exists and is rewritten as each module lands.
+> and runs the tarball (E3.S1) and the publishing half — release-please and `release.yml` (E3.S2) — are in
+> the repository, but **nothing is published yet**: the first release waits for the owner's one-time
+> setup (README "Release and rollback"). This file describes what exists and is rewritten as each module
+> lands.
 
 ## What this package is
 
@@ -321,9 +323,81 @@ A failure stops the run at its step and names it (`FAILED at step "typecheck"`);
 typecheck is the step that catches a misspelled import, which esbuild alone bundles silently. The check runs
 in `npm test` (`src/test/packaging.test.ts`, both modes) and in the reusable
 `.github/workflows/pack-and-consume.yml` (`workflow_call` + `workflow_dispatch`, ubuntu and windows),
-which `ci.yml` calls and E3.S2's `release.yml` will call again so its publish job can `needs:` it — `needs:`
-cannot reach a job in another workflow file (finding 0). Details and red observations:
+which `ci.yml` calls and `release.yml` calls again so its publish job can `needs:` it — `needs:` cannot
+reach a job in another workflow file (finding 0). `--published <version>` replaces only the pack step — `npm
+pack <name>@<version>` downloads the registry's tarball, asked anonymously — and the expected version, so
+the same seven checks after it run over the published bytes (E3.S2). Details and red observations:
 [module_tests.md](module_tests.md).
+
+## The release path — propose, tag, publish, verify (E3.S2)
+
+Nobody publishes from a machine. A person's one decision is merging release-please's pull request; from
+there each step is a workflow, and each refuses rather than skips when its precondition is missing.
+
+```mermaid
+flowchart TB
+  commits["conventional commits on main"] -->|"push to main"| rp["release-please.yml: secrets check, App token minted, release-please-action"]
+  rp -->|"App token"| pr["release PR: package.json, package-lock.json, CHANGELOG.md, manifest"]
+  pr -->|"CI runs on it, since the App opened it"| ci["ci.yml: build-test on ubuntu and windows, pack-and-consume"]
+  pr -->|"a person merges"| rp2["release-please.yml, the run the merge starts"]
+  rp2 -->|"App token"| rel["tag vX.Y.Z and a PUBLISHED GitHub release"]
+  rel -->|"release: published"| guard["release.yml guard: tag shape, ref, not draft, author Bot, commit on main, package.json version"]
+  guard --> pac["pack-and-consume.yml at the tag: ubuntu and windows"]
+  guard --> pub
+  pac --> pub["publish job, environment npm, id-token write: token check, guard again, npm ci, npm test"]
+  pub -->|"NODE_AUTH_TOKEN from NPM_TOKEN"| npm[("npmjs: X.Y.Z with SLSA v1 provenance")]
+  npm --> verify["verify-published.mjs, anonymous: version, provenance identity and digest, npm audit signatures"]
+  npm --> fixture["pack-and-consume.mjs --published: the served tarball through the consumer fixture"]
+  verify --> pd["POST_DEPLOY.md: the same four commands, run and stamped by a person"]
+  fixture --> pd
+```
+
+**Who can reach the secret and the signing token.** `release.yml` has one trigger, `release: published`;
+its top-level token reads contents; `id-token: write` and `secrets.NPM_TOKEN` exist only inside the publish
+job, which runs in the GitHub environment `npm` (whose deployment rule, set by the owner, admits `v*` tags
+only). No `pull_request` event of any kind starts `release.yml`, `release-please.yml` or
+`pack-and-consume.yml`, so a pull request — a fork's included — cannot reach either. Every value from the
+event reaches a script as an environment variable; no expression is pasted into a shell.
+
+**The guard** (`.github/scripts/release-guard.mjs`, run by both jobs that check out the tag) refuses a run
+that is not a published release, a tag that is not exactly `v<major>.<minor>.<patch>`, a ref other than that
+tag, a draft or pre-release, a release made by anything but a bot (the App — a release made with
+`GITHUB_TOKEN` starts no workflow, so no other bot can raise this event), a checkout that is not the
+release's commit, a commit not on `main` (`git merge-base --is-ancestor` over a full-history checkout), and a
+`package.json` whose version is not the tag's. It lists every refusal and exits 1; facts it cannot gather
+exit 2.
+
+**A missing credential is a red run, never a skipped one.** `release-please.yml` fails at its first step
+when either App secret is absent, naming both; the publish job fails at its first step when the `npm`
+environment has no `NPM_TOKEN`. Both decide on `secrets.X != ''` in an expression, so the secret itself
+never reaches the step's environment.
+
+**release-please** (`release-please-config.json`, `.release-please-manifest.json`): one `node` package at
+the root, tag `v<version>` with no component, `exclude-paths: [".github"]`, and changelog sections that are
+visible exactly for the releasing types (feat, fix, perf, revert) — a visible section is what makes
+release-please open a release, so `docs:` and the other non-releasing types are listed hidden. Not a draft:
+the release carries no assets, and a draft would raise no `release: published`. **The first version is
+0.1.0** through `initial-version` with an EMPTY manifest: release-please 17 treats a manifest version other
+than 0.0.0 as already released when no tag matches it (read in the action's bundled source), so the
+siblings' bootstrap shape would have cut 0.1.1. The pull-request title check runs
+`.github/scripts/docs-only-title.mjs` (copied from ConnectOtherAIs, adapted to a root package), which
+refuses a releasing title or commit whose changes, `.github` aside, are documentation alone.
+
+**Verification is of what npmjs serves.** `scripts/verify-published.mjs` asks the registry with no token and
+an empty user config (`scripts/lib/npm.mjs`, `anonymousEnv`): `npm view` answers the version (retried for
+about two minutes for propagation); the packument's SLSA v1 statement, fetched and decoded from its DSSE
+envelope, is about `pkg:npm/<name>@<version>` with the sha512 of the served `dist.integrity`, and names this
+repository, `.github/workflows/release.yml` and `refs/tags/v<version>`; and `npm audit signatures` in a
+throwaway install reports one package with a verified registry signature and a verified attestation. The
+decision is a pure function over those facts (`--facts`), held by the suite against facts recorded from a
+real provenance-published package.
+
+**Failure, rollback, and what is not built yet.** A failed publish leaves the tag and the GitHub release in
+place; tags are never moved; a cause outside the repository is fixed and THAT run re-run, a cause inside it
+is fixed forward to the next patch; a bad version is `npm deprecate`d, never unpublished (README "Release
+and rollback", plan §6). npm trusted publishing is bound only after 0.1.0 exists — a trusted publisher is
+configured per package — and then the token is retired; until then `NPM_TOKEN` is a granular token in the
+`npm` environment.
 
 ## The test harness
 
@@ -341,12 +415,18 @@ catalogue, and what the suite does not prove.
   recorders `scripts/record-coai-display.mjs`, `scripts/record-coai-help.mjs` and
   `scripts/record-coai-help-page.mjs` over their shared `scripts/coai-modules.mjs` (extract coai sources at a
   ref, compile them with this repository's `@types` — coai's `helpPage.ts` imports `node:crypto` — and load
-  them), `scripts/help-digests.mjs`, and `scripts/pack-and-consume.mjs` over `test/consumer-fixture/` (E3.S1;
-  `npm run pack-and-consume`). `package.json` scripts include `prepack: npm run build` (E3.S1).
+  them), `scripts/help-digests.mjs`, `scripts/pack-and-consume.mjs` over `test/consumer-fixture/` (E3.S1;
+  `npm run pack-and-consume`; `--published` since E3.S2), `scripts/verify-published.mjs` (E3.S2), and
+  `scripts/lib/npm.mjs` — how both start npm (`node npm-cli.js`, `npm_*` removed, `anonymousEnv`).
+  `package.json` scripts include `prepack: npm run build` (E3.S1). `release-please-config.json` and
+  `.release-please-manifest.json` (E3.S2).
 - **CI:** `.github/workflows/ci.yml` runs the whole chain — conventions check, plan lifecycle, typecheck,
   lint, test, build, `npm pack --dry-run` — on `ubuntu-latest` AND `windows-latest`, every action pinned to a
-  commit SHA, and calls the reusable `pack-and-consume.yml` (E3.S1); `pr-title.yml`,
-  `coderabbit-review.yml` + `.coderabbit.yaml`, `dependabot.yml`.
+  commit SHA, and calls the reusable `pack-and-consume.yml` (E3.S1); `release-please.yml` and `release.yml`
+  (E3.S2, above), with `.github/scripts/release-guard.mjs`; `pr-title.yml` with its "documentation alone
+  never opens a release" step (`.github/scripts/docs-only-title.mjs` over `.github/scripts/lib/resolved.mjs`,
+  both from ConnectOtherAIs); `coderabbit-review.yml` + `.coderabbit.yaml`, `dependabot.yml`. A commit that
+  touches only `.github/` never releases.
 - The family rules, mounted at `.agents/conventions` (tracking `release`), and the Claude host adapter
   (`.claude/settings.json`, `.claude/hooks/`).
 

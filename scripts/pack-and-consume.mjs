@@ -6,11 +6,18 @@
  *
  *     node scripts/pack-and-consume.mjs                  # every step; exit 0
  *     node scripts/pack-and-consume.mjs --broken-import  # the teeth: the fixture misspells an import; exit 1 at "typecheck"
+ *     node scripts/pack-and-consume.mjs --published [<version>]  # the same steps over the tarball npmjs SERVES (E3.S2)
+ *
+ * `--published` takes the version from its argument or from `$TARGET` (POST_DEPLOY.md passes it that way),
+ * refuses anything but `<major>.<minor>.<patch>` with exit 2, and changes only the first step and the
+ * version `install` expects: everything after it is the same check, over the published bytes.
  *
  * The steps, each named in the log and in a failure:
  *
  *   pack       `npm pack` from a repository with NO `dist/` — this script removes it first, so only the
  *              `prepack` script (`npm run build`) can put it into the tarball (epic 3 plan round, finding 1).
+ *              With `--published`: `npm pack <name>@<version>` in the temporary directory, asked
+ *              anonymously (`lib/npm.mjs`), which DOWNLOADS the registry's tarball and builds nothing.
  *   contents   the tarball, read here byte by byte (gunzip + tar headers, not npm's summary): it carries
  *              `dist/index.js`, `dist/index.d.ts` and every `bin` target, and nothing the manifest's `files`
  *              and npm's own three (`package.json`, `README.md`, `LICENSE`) do not name; `dist/` holds only
@@ -43,13 +50,15 @@
  * 2 usage.
  */
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { gunzipSync } from 'node:zlib';
+
+import { anonymousEnv, childEnv, npmCli as findNpmCli } from './lib/npm.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const FIXTURE = join(ROOT, 'test', 'consumer-fixture');
@@ -70,21 +79,13 @@ const fail = (message) => {
 
 const repoRequire = createRequire(join(ROOT, 'package.json'));
 
-/** npm's own CLI script: the one the calling npm ran, else the one installed beside this node. */
+/** npm's own CLI script (`lib/npm.mjs`), its absence a step failure. */
 function npmCli() {
-  const candidates = [
-    process.env.npm_execpath,
-    join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js'),
-    join(dirname(process.execPath), '..', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
-  ];
-  const found = candidates.find((candidate) => candidate !== undefined && candidate.endsWith('npm-cli.js') && existsSync(candidate));
-
-  return found ?? fail(`cannot find npm-cli.js beside ${process.execPath}; looked at: ${candidates.filter(Boolean).join(', ')}`);
-}
-
-/** This environment without npm's `npm_*` variables (keys compared case-insensitively, as Windows does). */
-function childEnv() {
-  return Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^npm_/i.test(key)));
+  try {
+    return findNpmCli();
+  } catch (error) {
+    return fail(error.message);
+  }
 }
 
 /** The last lines of a child's output, for a failure message. */
@@ -93,8 +94,8 @@ function tail(text, lines = 40) {
 }
 
 /** `node <args>` in `cwd`; refuses a spawn error, a timeout or a non-zero exit, naming `what`. */
-function node(args, cwd, what) {
-  const result = spawnSync(process.execPath, args, { cwd, env: childEnv(), encoding: 'utf8', timeout: CHILD_TIMEOUT_MS });
+function node(args, cwd, what, env = childEnv()) {
+  const result = spawnSync(process.execPath, args, { cwd, env, encoding: 'utf8', timeout: CHILD_TIMEOUT_MS });
   if (result.error !== undefined) {
     fail(`${what} did not run: ${result.error.message}`);
   }
@@ -105,7 +106,7 @@ function node(args, cwd, what) {
   return result;
 }
 
-const npm = (args, cwd, what) => node([npmCli(), ...args], cwd, what);
+const npm = (args, cwd, what, env = childEnv()) => node([npmCli(), ...args], cwd, what, env);
 
 /** The paths in a `.tgz`, read from the ustar headers themselves; `package/` is stripped. */
 function tarballPaths(file) {
@@ -133,12 +134,21 @@ function admitted(path) {
   return NPM_ALWAYS.includes(path) || MANIFEST.files.some((entry) => path === entry || path.startsWith(`${entry}/`));
 }
 
-function packStep(ctx) {
+/** `npm pack` here, from a repository with no dist/ — or, with --published, the registry's tarball. */
+function packInto(ctx, destination) {
+  if (ctx.published) {
+    npm(['pack', `${MANIFEST.name}@${ctx.version}`, '--pack-destination', destination], ctx.temp, 'npm pack of the published version', anonymousEnv(ctx.temp));
+    return;
+  }
   // No dist/: only prepack can put one into the tarball.
   rmSync(join(ROOT, 'dist'), { recursive: true, force: true });
+  npm(['pack', '--pack-destination', destination], ROOT, 'npm pack');
+}
+
+function packStep(ctx) {
   const destination = join(ctx.temp, 'pack');
   mkdirSync(destination);
-  npm(['pack', '--pack-destination', destination], ROOT, 'npm pack');
+  packInto(ctx, destination);
   const tarballs = readdirSync(destination).filter((file) => file.endsWith('.tgz'));
   if (tarballs.length !== 1) {
     fail(`npm pack left ${tarballs.length} tarball(s) in ${destination}: ${tarballs.join(', ')}`);
@@ -146,7 +156,7 @@ function packStep(ctx) {
   ctx.tarball = join(ctx.temp, 'kit.tgz');
   renameSync(join(destination, tarballs[0]), ctx.tarball);
 
-  return tarballs[0];
+  return ctx.published ? `${tarballs[0]} from the registry` : tarballs[0];
 }
 
 function contentsStep(ctx) {
@@ -189,8 +199,8 @@ function installStep(ctx) {
   npm(['install', '--offline', '--no-audit', '--no-fund', '--no-package-lock'], ctx.consumer, 'npm install of the tarball');
   const installed = join(ctx.consumer, 'node_modules', ...MANIFEST.name.split('/'));
   const version = JSON.parse(readFileSync(join(installed, 'package.json'), 'utf8')).version;
-  if (version !== MANIFEST.version) {
-    fail(`installed ${MANIFEST.name}@${version}, expected ${MANIFEST.version}`);
+  if (version !== ctx.version) {
+    fail(`installed ${MANIFEST.name}@${version}, expected ${ctx.version}`);
   }
 
   return `${MANIFEST.name}@${version}`;
@@ -276,19 +286,38 @@ function steps(brokenImport) {
   ];
 }
 
-function readArguments() {
+const USAGE = 'usage: node scripts/pack-and-consume.mjs [--broken-import] [--published [<version>]]  (the version, else $TARGET)';
+const VERSION_SHAPE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+
+/** The flags and, with --published, the version to download — or `{ usage }` naming what is wrong. */
+function readArguments(argv, env) {
+  let parsed;
   try {
-    return parseArgs({ options: { 'broken-import': { type: 'boolean', default: false } } }).values;
+    parsed = parseArgs({ args: argv, allowPositionals: true, options: { 'broken-import': { type: 'boolean', default: false }, published: { type: 'boolean', default: false } } });
   } catch (error) {
-    process.stderr.write(`${error.message}\nusage: node scripts/pack-and-consume.mjs [--broken-import]\n`);
-    process.exit(2);
+    return { usage: error.message };
   }
+  const { 'broken-import': brokenImport, published } = parsed.values;
+  if (!published) {
+    return parsed.positionals.length === 0 ? { brokenImport, published, version: MANIFEST.version } : { usage: `unexpected argument ${parsed.positionals[0]}` };
+  }
+  const version = parsed.positionals[0] ?? env.TARGET ?? '';
+  if (parsed.positionals.length > 1 || !VERSION_SHAPE.test(version)) {
+    return { usage: `--published needs one version <major>.<minor>.<patch> (an argument or $TARGET), got "${parsed.positionals.join(' ') || version}"` };
+  }
+
+  return { brokenImport, published, version };
 }
 
 /** Run the steps in order; the first failure stops the run. Answers the exit code. */
 async function main() {
-  const { 'broken-import': brokenImport } = readArguments();
-  const ctx = { temp: mkdtempSync(join(tmpdir(), 'kit-pack-and-consume-')) };
+  const args = readArguments(process.argv.slice(2), process.env);
+  if (args.usage !== undefined) {
+    process.stderr.write(`${args.usage}\n${USAGE}\n`);
+    return 2;
+  }
+  const { brokenImport } = args;
+  const ctx = { temp: mkdtempSync(join(tmpdir(), 'kit-pack-and-consume-')), published: args.published, version: args.version };
   const started = Date.now();
   try {
     for (const { name, run } of steps(brokenImport)) {

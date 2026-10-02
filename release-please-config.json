@@ -1,0 +1,72 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "$note": [
+    "How a release is decided here: release-please reads the conventional commits on main since the last",
+    "tag, opens a pull request that bumps package.json and writes CHANGELOG.md, and MERGING that pull",
+    "request is what cuts the tag and the GitHub release. `.github/workflows/release.yml` is what the",
+    "published GitHub release then starts: it packs, consumes and publishes to npm. Nothing else publishes.",
+    "",
+    "ONE PACKAGE, AT THE ROOT, AND THE TAG HAS NO COMPONENT: `v0.1.0`, not `vscode-webview-kit-v0.1.0`.",
+    "release.yml refuses any tag that is not exactly `v<major>.<minor>.<patch>`, so a prefixed tag would",
+    "publish nothing, loudly. This is the sidecar's shape (one product, `v*`), not the four-component one."
+  ],
+  "$bootstrap": [
+    "THE FIRST RELEASE IS 0.1.0, and getting there needs two settings that only work together. Measured",
+    "against release-please 17.x as bundled by release-please-action v5.0.0 (dist/index.js), not recalled:",
+    "",
+    "1. The manifest is EMPTY (`{}`). When no release is found for a path but the manifest names a version",
+    "   other than 0.0.0, release-please logs 'No latest release found ... but a previous version (X) was",
+    "   specified in the manifest' and treats X as ALREADY RELEASED - so a manifest saying 0.1.0 would cut",
+    "   0.1.1 or 0.2.0, and 0.1.0 would never exist. That is how the siblings bootstrapped (their manifests",
+    "   name versions that WERE tagged); this package has no tag yet, so the sibling shape is wrong here.",
+    "2. `initial-version` is 0.1.0. With no previous release, `buildNewVersion` returns",
+    "   `initialReleaseVersion()`, which is `initial-version` when set and otherwise 1.0.0 - the node",
+    "   strategy does not override it (rust, python and others answer 0.1.0; node does not).",
+    "",
+    "After 0.1.0 is tagged, release-please writes `{\".\": \"0.1.0\"}` into the manifest itself and",
+    "`initial-version` is never read again. `src/test/releaseConfig.test.ts` holds both states against",
+    "package.json, so a manifest that names an unreleased version fails the suite."
+  ],
+  "$sections": [
+    "THE CHANGELOG SECTIONS ARE ALSO WHAT DECIDES WHETHER A RELEASE OPENS. release-please skips a release",
+    "whose notes would be empty, so a VISIBLE section is a releasing type. Visible: feat, fix, perf and",
+    "revert - exactly the types `.github/scripts/docs-only-title.mjs` treats as releasing. Every other type",
+    "pr-title.yml accepts is listed and hidden, so `docs:`, `test:`, `ci:`, `chore:`, `refactor:` and",
+    "`build:` never open a release on their own. `src/test/releaseConfig.test.ts` derives both lists",
+    "rather than retyping them."
+  ],
+  "$exclude": [
+    "A COMMIT THAT TOUCHES NOTHING BUT `.github` IS NOT A RELEASE (the family's measured lesson,",
+    "2026-09-21: `feat(ci):` on a workflow-only change proposed a minor release of unchanged code three",
+    "times). An exclude path is a DIRECTORY PREFIX (`isRelevant` is `file.indexOf(path + '/') === 0`), so",
+    "only a directory belongs here; and a commit touching `.github` AND anything else is still released."
+  ],
+  "$draft": [
+    "NOT A DRAFT, unlike the siblings, and on purpose. Their releases carry ASSETS that are uploaded after",
+    "the tag, so a public release would sit empty; this one carries none - the artefact is on npm. A",
+    "published (non-draft) release is what raises `release: published`, the one event release.yml listens",
+    "to; a draft raises nothing until a person publishes it."
+  ],
+  "release-type": "node",
+  "include-component-in-tag": false,
+  "include-v-in-tag": true,
+  "initial-version": "0.1.0",
+  "exclude-paths": [
+    ".github"
+  ],
+  "changelog-sections": [
+    { "type": "feat", "section": "Features" },
+    { "type": "fix", "section": "Bug Fixes" },
+    { "type": "perf", "section": "Performance" },
+    { "type": "revert", "section": "Reverts" },
+    { "type": "docs", "section": "Documentation", "hidden": true },
+    { "type": "test", "section": "Tests", "hidden": true },
+    { "type": "chore", "section": "Chores", "hidden": true },
+    { "type": "refactor", "section": "Refactoring", "hidden": true },
+    { "type": "ci", "section": "Continuous Integration", "hidden": true },
+    { "type": "build", "section": "Build", "hidden": true }
+  ],
+  "packages": {
+    ".": {}
+  }
+}

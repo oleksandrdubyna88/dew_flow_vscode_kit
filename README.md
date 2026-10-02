@@ -246,6 +246,133 @@ from this repository's devDependencies, and the kit has no runtime dependencies.
 modes, so it rebuilds `dist/`; CI also runs it on its own on ubuntu and windows
 (`.github/workflows/pack-and-consume.yml`).
 
+`node scripts/pack-and-consume.mjs --published <version>` runs the same steps over the tarball npmjs
+serves for that version — downloaded, never built — which is how a release is checked after it is public.
+
+## Release and rollback
+
+Releases are cut by [release-please](https://github.com/googleapis/release-please) and published to npm
+by CI, with provenance. Nobody publishes from a laptop. **Nothing has been published yet**; the pipeline
+below is in the repository and waits for the one-time setup at the end of this section.
+
+### How a release happens
+
+1. **Commits land on `main`** in the conventional shape. The commit TYPE is the version: `feat:` a minor,
+   `fix:` / `perf:` a patch; `docs:`, `test:`, `ci:`, `chore:`, `refactor:`, `build:` release nothing. A
+   commit that touches only `.github/` never releases, and the title check refuses a releasing title whose
+   changes are documentation alone (`.github/scripts/docs-only-title.mjs`).
+2. **`release-please.yml`** (every push to `main`) opens or updates one pull request, *chore(main): release
+   x.y.z*, which bumps `package.json` and `package-lock.json` and writes `CHANGELOG.md`. It runs with the
+   release App's token, so that pull request gets CI like any other.
+3. **Merging it is the decision to release.** The run that merge starts tags `v<x.y.z>` (no component) and
+   creates the published GitHub release. The first release is **0.1.0** (`initial-version`, with an empty
+   manifest — see `$bootstrap` in `release-please-config.json`).
+4. **`release.yml`** (started by that published release, and by nothing else):
+   **guard** — the tag is exactly `v<major>.<minor>.<patch>`, the release was made by the App, it is not a
+   draft or pre-release, its commit is on `main`, and `package.json` at the tag says the same version;
+   **pack-and-consume** — the packed tarball installs, type-checks, bundles and runs in the consumer fixture
+   on ubuntu and windows; **publish** — needs both, runs in the GitHub environment `npm`, re-checks the
+   guard, runs `npm ci` and `npm test`, `npm publish --provenance --access public`, then verifies what
+   npmjs serves (`scripts/verify-published.mjs`) and runs the consumer fixture against the published
+   tarball.
+5. **Afterwards**, from a checkout of the tag, run [POST_DEPLOY.md](POST_DEPLOY.md) and stamp it:
+
+   ```bash
+   node .agents/conventions/tools/post-deploy-check.mjs --target 0.1.0 --timeout 300000
+   ```
+
+Consumers pin the EXACT version and switch in their own pull requests, only after a version is on npm and
+verified.
+
+### The provenance identity
+
+Every version is published with a SLSA v1 provenance statement, signed through GitHub's OIDC issuer, that
+names where it was built. For this package that is, and must stay:
+
+| | |
+|---|---|
+| Repository | `oleksandrdubyna88/dew_flow_vscode_kit` — `package.json`'s `repository.url`, which npm checks against the statement |
+| Workflow | `.github/workflows/release.yml`, started by `release` (`published`) |
+| Ref | `refs/tags/v<version>` |
+| Environment | `npm` — the GitHub environment the publish job runs in; it is not written into the statement, and it is what npm trusted publishing will be bound to |
+
+To check a version yourself: `npm audit signatures` in a project that installed it, or
+`node scripts/verify-published.mjs <version>`, which also asserts the statement's repository, workflow and
+ref and that it is about the exact tarball npmjs serves (its sha512 against `dist.integrity`).
+
+### What the owner creates once, before the first release
+
+1. **The release App on this repository.** Install the `dew-flow-release-please` GitHub App on
+   `oleksandrdubyna88/dew_flow_vscode_kit` (installing needs a browser). It writes with its own token:
+   *Contents* and *Pull requests*, read and write — the permissions it already uses on the sibling
+   repositories; check them on the App's settings page.
+2. **Two repository Actions secrets** (Settings → Secrets and variables → Actions):
+   `RELEASE_PLEASE_APP_ID` — the numeric App ID from <https://github.com/settings/apps/dew-flow-release-please>;
+   `RELEASE_PLEASE_APP_PRIVATE_KEY` — the App's PEM, set from a file on stdin, never with `--body` (a
+   multi-line value from a Windows shell arrives mangled): `gh secret set RELEASE_PLEASE_APP_PRIVATE_KEY -R
+   oleksandrdubyna88/dew_flow_vscode_kit < key.pem` in Git Bash, or `Get-Content -Raw key.pem | gh secret set
+   RELEASE_PLEASE_APP_PRIVATE_KEY -R oleksandrdubyna88/dew_flow_vscode_kit` in PowerShell. Until both exist,
+   every run of `release-please.yml` fails with a message saying so, and nothing is proposed.
+3. **The GitHub environment `npm`** (Settings → Environments → New environment, named exactly `npm`):
+   - an **environment** secret `NPM_TOKEN` — a repository secret of that name is NOT what the publish job
+     reads, and with no environment secret the job fails at its first step;
+   - *Deployment branches and tags* → *Selected branches and tags* → a **tag** rule `v*`, so only a release
+     tag's run can reach the secret;
+   - optionally, *Required reviewers*: the owner — a person approving each publish before it runs.
+4. **The npm token** for `NPM_TOKEN`: on npmjs.com, logged in as the account that owns the
+   `@oleksandrdubyna88` scope, a **granular access token** (not a classic one) with *Packages and scopes*:
+   *Read and write*. The package does not exist yet, so the token cannot be narrowed to it: choose all
+   packages (or the scope, where offered), no organizations, and the shortest expiry that covers the first
+   release. Where the account requires two-factor authentication to publish, the token needs npm's *bypass
+   2FA* setting, or CI fails with `EOTP`. It exists to publish 0.1.0 and is retired right after (below).
+5. Recommended, as on the siblings: a tag ruleset that restricts creating, moving and deleting `v*` tags
+   to the App — and a probe that it refuses, since reading a ruleset back is not evidence it acts.
+
+### When a publish fails
+
+The tag and the GitHub release stay exactly where they are, and nothing is on npm (plan §6, point 5).
+**A tag is never moved or deleted**: a moved tag makes every checkout that already fetched it wrong in a
+way nothing reports, and deleting the tag of a published release turns the release into a draft.
+
+- **The cause is outside the repository** (no `NPM_TOKEN`, an environment rule, a registry outage) and the
+  run stopped before `npm publish`: fix the setting and **re-run that run**. Same tag, same commit, nothing
+  was published.
+- **The cause is in the repository**: fix it on `main`; the next release-please pull request cuts the next
+  patch and its tag publishes. A fix that lives only in `.github/` releases nothing by itself
+  (`exclude-paths`), so the next patch is cut by the next commit that changes the package; a release tag
+  runs the workflow file AT that tag, so the fix reaches the release it needs. Say in the next release's
+  notes that the version before it never reached npm.
+- **`npm publish` succeeded and a later step failed**: the version is public. Re-running fails closed (npm
+  refuses to publish over a version), so check it by hand with `POST_DEPLOY.md` and treat what it finds as
+  a bad release, below.
+
+### Rolling back a bad version — deprecate, never unpublish
+
+npm versions are immutable and a number is never reused, so a bad release is fixed forward: ship the fix
+as the next patch, then, from the owner's machine,
+
+```bash
+npm deprecate @oleksandrdubyna88/vscode-webview-kit@<bad> "<what is wrong>; use <fixed>"
+```
+
+**Never `npm unpublish`**: it breaks every lockfile that already resolved the version, and the number can
+never be published again anyway. A consumer rolls back by reverting its own pin — every version ever
+published stays installable from the registry, so no kit version has to be rebuilt to go back to it.
+
+### After 0.1.0: npm trusted publishing, and the token retired
+
+Trusted publishing is configured per package, so it can be bound only once the package exists:
+
+1. npmjs.com → the package → *Settings* → *Trusted publisher* → GitHub Actions: user `oleksandrdubyna88`,
+   repository `dew_flow_vscode_kit`, workflow `release.yml`, environment `npm` — the identity above.
+2. In `release.yml`: drop `NODE_AUTH_TOKEN` from the publish step and the `NPM_TOKEN` check, and publish
+   with an npm new enough for trusted publishing (npm documents 11.5.1 or later; the Node 22 runner's npm is
+   10). Provenance is then produced by trusted publishing itself.
+3. Set the package's publishing access to require two-factor authentication and disallow tokens, delete
+   `NPM_TOKEN` from the `npm` environment, and revoke the token on npmjs.com.
+
+This is tracked as part B of the plan's Definition of Done and is not done yet.
+
 ## License
 
 MIT

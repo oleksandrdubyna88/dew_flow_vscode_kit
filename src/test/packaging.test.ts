@@ -140,3 +140,22 @@ test('pack-and-consume goes red AT THE TYPECHECK when the fixture imports a name
   assert.match(run.stdout, /^pack-and-consume: ok +install\b/m, 'the steps before the typecheck should have passed');
   assert.doesNotMatch(run.stdout, /^pack-and-consume: ok +(bundle|run|bin)\b/m, 'nothing after the typecheck may run');
 });
+
+test('pack-and-consume --published needs one <major>.<minor>.<patch> version, from its argument or $TARGET, and refuses anything else with exit 2 before any step', () => {
+  // The online half (the registry's tarball through the same eight steps) runs in release.yml after the
+  // publish and from POST_DEPLOY.md; what is held here is that a wrong target is a usage error, never a
+  // step that went looking for it.
+  const cases: readonly (readonly [readonly string[], string, RegExp])[] = [
+    [['--published'], '', /--published needs one version <major>\.<minor>\.<patch> \(an argument or \$TARGET\), got ""/],
+    [['--published'], 'v0.1.0', /got "v0\.1\.0"/],
+    [['--published', '0.1'], '', /got "0\.1"/],
+    [['--published', '0.1.0', '0.2.0'], '', /got "0\.1\.0 0\.2\.0"/],
+    [['0.1.0'], '', /unexpected argument 0\.1\.0/],
+  ];
+  for (const [args, target, why] of cases) {
+    const run = spawnSync(process.execPath, [PACK_AND_CONSUME, ...args], { cwd: ROOT, encoding: 'utf8', timeout: 30_000, env: { ...process.env, TARGET: target } });
+    assert.equal(run.status, 2, `${args.join(' ')} (TARGET=${target}): ${run.stdout}${run.stderr}`);
+    assert.match(run.stderr, why);
+    assert.equal(run.stdout, '', 'no step may have started');
+  }
+});

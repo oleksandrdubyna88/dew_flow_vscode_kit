@@ -8,15 +8,18 @@ name: pr · title
 # The pull request title becomes the line in main's history (rebase keeps commits, squash uses the
 # title), so it has to say what changed in the family's own shape: `type: what changed`.
 #
-# Copied from ConnectOtherAIs (2026-10-02) without its second step — "documentation alone never opens a
-# release" reads `release-please-config.json`, which arrives with the release pipeline (Epic 3). It is
-# added back there, beside the configuration it reads.
+# Copied from ConnectOtherAIs (2026-10-02). Its second step — "documentation alone never opens a release"
+# — reads `release-please-config.json`, so it was left out until the release pipeline brought that file;
+# it is back since E3.S2 (coai main at 85085850), with the kit's one adaptation in the script itself: this
+# package is the repository ROOT, which coai's `pkg + '/'` prefix test can never match.
 on:
   pull_request_target:
     types: [opened, edited, synchronize, reopened]
 
 permissions:
   pull-requests: read
+  # Read, to list each commit's files for the documentation rule below.
+  contents: read
 
 jobs:
   semantic:
@@ -41,3 +44,23 @@ jobs:
             ci
             build
           requireScope: false
+
+      # DOCUMENTATION ALONE (Markdown and pictures) NEVER OPENS A RELEASE — the family operator's rule,
+      # 2026-09-26 (dew_flow_connect_other_ais · research/PLAN_the_release_guards_contradict.md).
+      # release-please releases on the commit TYPE and cannot exclude files by pattern, so the type is held
+      # here: a releasing title or commit whose files in the package are all documentation is refused. A
+      # step of THIS job, because this job is the title check a ruleset can require; a job of its own would
+      # be advisory until something named it.
+      #
+      # `pull_request_target` checks out the BASE branch, so the script that runs is main's, never the pull
+      # request's own code; the title reaches it as an environment variable, never pasted into the shell.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Documentation alone never opens a release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: node .github/scripts/docs-only-title.mjs --pr "$PR_NUMBER"

@@ -1,0 +1,163 @@
+name: release
+
+# ---------------------------------------------------------------------------
+# PUBLISHES `@oleksandrdubyna88/vscode-webview-kit` TO npm, with provenance, and nothing else does.
+#
+# Started ONLY by a published GitHub release — the one release-please cuts when its release pull
+# request merges (`release-please.yml`, with the App token: a release made with `GITHUB_TOKEN` would
+# start nothing). There is no `pull_request`, `push` or `workflow_dispatch` trigger, so no pull request —
+# a fork's included — can reach the publish job, its `id-token`, or the npm token
+# (`src/test/releaseWorkflows.test.ts` fails the suite if one appears).
+#
+#   guard             the event is that release: tag exactly `v<major>.<minor>.<patch>`, made by a bot (the
+#                     App), not a draft or pre-release, its commit on main, package.json at the tag saying
+#                     the same version (`.github/scripts/release-guard.mjs`, tested over facts)
+#   pack-and-consume  the reusable workflow ci.yml runs on every pull request, on ubuntu AND windows, at
+#                     the tag: the PACKED tarball installs, type-checks, bundles and runs in a consumer
+#   publish           needs BOTH, so one red leg publishes nothing (common.development-workflow, "a release
+#                     that shipped SOME of its platforms"); environment `npm` holds `NPM_TOKEN`; this job
+#                     alone has `id-token: write`; it re-checks the guard on its own checkout, runs the
+#                     suite, publishes, then verifies what npmjs SERVES, anonymously
+#
+# A FAILED PUBLISH IS FIXED FORWARD (plan §6.5): the tag and the GitHub release stay where they are and
+# are never moved or deleted; the cause is fixed on main and the next release-please pull request cuts
+# the next patch, whose tag publishes. A run that failed before `npm publish` may be RE-RUN as it is.
+# Re-running after a successful publish fails closed — npm refuses to publish over an existing version.
+# ---------------------------------------------------------------------------
+
+on:
+  release:
+    types: [published]
+
+concurrency:
+  group: release-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    name: release · guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.guard.outputs.version }}
+    steps:
+      # The TAG, with the whole history: "is this commit on main" is answered by git, and a shallow clone
+      # has no main to answer it with.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      # Every value from the event reaches the script as an environment variable, never pasted into the
+      # shell: a tag name is text somebody chose.
+      - id: guard
+        name: The tag is v*, made by the release App on main, and package.json says the same version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_DRAFT: ${{ github.event.release.draft }}
+          RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
+          RELEASE_AUTHOR_TYPE: ${{ github.event.release.author.type }}
+        run: node .github/scripts/release-guard.mjs
+
+  # The same reusable workflow ci.yml calls (epic 3 plan round, finding 0: `needs:` cannot reach a job in
+  # another workflow file, so the call lives here and the publish job needs it). At a release event its
+  # checkout is the tag.
+  pack-and-consume:
+    needs: guard
+    permissions:
+      contents: read
+    uses: ./.github/workflows/pack-and-consume.yml
+
+  publish:
+    name: release · publish to npm
+    needs: [guard, pack-and-consume]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The environment holds NPM_TOKEN, so only a job naming it can read the secret. Its deployment rule
+    # (README, "What the owner creates once") admits `v*` tags only — a second fence, owned by GitHub's
+    # settings rather than by this file.
+    environment: npm
+    permissions:
+      contents: read
+      # Signs the provenance statement through GitHub's OIDC issuer — here and in no other job.
+      id-token: write
+    steps:
+      # FAIL LOUDLY, never skip: a release with no npm token must be a red run that says so, not a green
+      # one that published nothing. The token never reaches the environment of this step — only `true` or
+      # `false` does.
+      - name: NPM_TOKEN must be set in the npm environment
+        env:
+          NPM_TOKEN_SET: ${{ secrets.NPM_TOKEN != '' }}
+        run: |
+          if [ "$NPM_TOKEN_SET" = "true" ]; then
+            echo "release: NPM_TOKEN present in the npm environment."
+            exit 0
+          fi
+          echo "::error::release: NPM_TOKEN is not set in the 'npm' environment, so nothing can be published."
+          echo "  Create the environment 'npm' (Settings > Environments) and add NPM_TOKEN to it as an" >&2
+          echo "  ENVIRONMENT secret — a repository secret is not what this job reads (README, 'Release and" >&2
+          echo "  rollback'). Then re-run this run: nothing was published, so the tag is still good." >&2
+          exit 1
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      # `registry-url` writes the .npmrc that reads NODE_AUTH_TOKEN — the variable npm uses; `NPM_TOKEN` is
+      # only the secret's name. No `cache:` in the job that publishes: the bytes it publishes are built from
+      # `npm ci` against the lockfile and nothing restored from another run.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      # Again, on THIS checkout: the job that publishes verifies what it is about to publish.
+      - id: guard
+        name: The guard, on the checkout that is published
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_DRAFT: ${{ github.event.release.draft }}
+          RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
+          RELEASE_AUTHOR_TYPE: ${{ github.event.release.author.type }}
+        run: node .github/scripts/release-guard.mjs
+
+      - name: Install
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      # `prepack` rebuilds dist/ and `prepublishOnly` runs build and test once more, inside the publish.
+      # `--provenance` makes npm sign a SLSA statement naming this repository, this workflow file and
+      # the tag; `--access public` because a scoped package is private by default.
+      - name: Publish with provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public
+
+      # What npmjs SERVES, asked anonymously: the version, the provenance statement's identity (this
+      # repository, release.yml, refs/tags/v<version>) and its digest, and `npm audit signatures` in a
+      # throwaway install. The same script is POST_DEPLOY.md's items 1–3.
+      - name: Verify on the registry — version, provenance identity, signatures
+        env:
+          TARGET: ${{ steps.guard.outputs.version }}
+        run: node scripts/verify-published.mjs
+
+      # The consumer fixture against the PUBLISHED tarball (POST_DEPLOY.md item 4): downloaded from npmjs,
+      # read, installed, type-checked, bundled and run — the same steps the pre-publish check took.
+      - name: The consumer fixture against the published version
+        env:
+          TARGET: ${{ steps.guard.outputs.version }}
+        run: node scripts/pack-and-consume.mjs --published

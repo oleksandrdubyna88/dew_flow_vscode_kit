@@ -199,6 +199,21 @@ test('two quick language choices both land, in order, through the write queue', 
   assert.ok(panel.html.includes('<option value="es" selected>'));
 });
 
+test('a language choice queued behind a held write is dropped when the panel is disposed; the one in flight still lands', async () => {
+  const { configuration, help, notSaved } = rig(stored('en'));
+  configuration.hold(LANGUAGE);
+
+  const first = help.handle({ type: 'language', language: 'ru' });
+  const second = help.handle({ type: 'language', language: 'es' });
+  await settle();
+  help.dispose();
+  configuration.release();
+  await Promise.all([first, second]);
+
+  assert.deepEqual(configuration.writes.map((w) => w.value), ['ru'], 'a language queued behind a held write was written after dispose');
+  assert.deepEqual(notSaved, [], 'a choice dropped by dispose is not a setting that could not be saved');
+});
+
 test('a language this catalog does not offer is NOT written, even though the help knows it', async () => {
   const { configuration, panel, help } = rig(stored('en'), ruOnly());
 
@@ -313,10 +328,11 @@ test('closing the panel — its own dispose event — unhooks the same, so a clo
   assert.equal(panel.postedAfterDispose, 0);
 });
 
-test('a pending language write still lands after dispose, as a pending display write does', async () => {
+test('a language write already in flight still lands after dispose, as an in-flight display write does', async () => {
   const { configuration, help } = rig(stored('en'));
   configuration.hold(LANGUAGE);
   const writing = help.handle({ type: 'language', language: 'ru' });
+  await settle();
 
   help.dispose();
   configuration.release();

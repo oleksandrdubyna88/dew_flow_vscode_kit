@@ -288,7 +288,7 @@ earlier listeners before its error is rethrown (gate, epic 2 code round, finding
 reader keeps their place; a language goes through the panel's own `WriteQueue` and `settingWritten` with the
 consumer's `settingNotSaved` funnel, naming `help`. The stored language reads as English when it is junk or
 a language the catalog has no module for. `dispose()` — or the panel closing — unhooks all four and leaves
-the consumer's display host alone; `render` and `handle` throw afterwards, and a pending write still lands.
+the consumer's display host alone; `render` and `handle` throw afterwards, and a language write already in flight still lands while a choice still queued behind it is dropped — the display host's rule.
 
 **Growth** (plan §5): one panel holds four hooks and one write queue as long as the language writes not yet
 done; a closed panel holds nothing.

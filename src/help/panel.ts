@@ -33,7 +33,8 @@ import type { Catalog, HelpLanguage } from './types';
  * before the error is rethrown; gate, epic 2 code round, finding 3) — and `dispose()` unhooks all four,
  * whether called or reached through the panel closing. The display host is the consumer's and is left
  * alone. After dispose, `render` and `handle` throw: a closed page holds nothing, and a consumer driving
- * one is a programming error worth hearing about. A pending write still lands.</p>
+ * one is a programming error worth hearing about. The language write in flight still lands; a choice
+ * still queued behind it is dropped.</p>
  */
 
 /** One help panel, as the kit sees it: a webview to post to, whose HTML is set and whose page posts back. */
@@ -136,10 +137,19 @@ class Panel implements HelpPanel {
     return action.kind === 'press' ? this.options.display.apply(action.press, 'help') : this.setLanguage(action.language);
   }
 
-  /** One queued write of the language; its failure reaches the consumer's reporter, never the caller. */
+  /**
+   * One queued write of the language; its failure reaches the consumer's reporter, never the caller. A
+   * choice still QUEUED when the panel is disposed is dropped — the display host's rule (gate, epic 2 code
+   * round, finding 0): a closed page changes no setting. The write already in flight lands.
+   */
   private setLanguage(language: HelpLanguage): Promise<void> {
     const { configuration, languageSetting, settingNotSaved } = this.options;
-    const writing = this.queue.run(async () => { await configuration.write(languageSetting, language); });
+    const writing = this.queue.run(async () => {
+      if (this.disposed) {
+        return;
+      }
+      await configuration.write(languageSetting, language);
+    });
 
     return settingWritten(writing, 'help', settingNotSaved);
   }

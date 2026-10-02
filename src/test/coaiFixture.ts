@@ -7,10 +7,11 @@ import type { HelpArticle, HelpBody, HelpLanguage, TranslatedLanguage } from '..
 /**
  * What ConnectOtherAIs' own modules computed at `1056aed9`, read once for every byte-compat test.
  *
- * <p>The files are written by `scripts/record-coai-display.mjs` and `scripts/record-coai-help.mjs` and
- * never edited by hand; this module is the one reader of them, so the pure-half tests
- * (`displayByteCompat.test.ts`), the host tests (`displayHost.test.ts`) and the help catalog tests
- * (`helpCatalog.test.ts`) hold the kit against the same recordings.</p>
+ * <p>The files are written by `scripts/record-coai-display.mjs`, `scripts/record-coai-help.mjs` and
+ * `scripts/record-coai-help-page.mjs` and never edited by hand; this module is the one reader of them, so
+ * the pure-half tests (`displayByteCompat.test.ts`), the host tests (`displayHost.test.ts`), the help
+ * catalog tests (`helpCatalog.test.ts`) and the help page tests (`helpPage.test.ts`) hold the kit against
+ * the same recordings.</p>
  */
 
 export interface ZoomRecord { scalePx: number; offsetLabel: string; zoomControlHtml: string; zoomStyle: string }
@@ -88,3 +89,36 @@ export interface RecordedHelp {
 export const RECORDED_HELP = JSON.parse(
   readFileSync(join(__dirname, '..', '..', 'src', 'test', 'fixtures', 'coai-help-1056aed9.json'), 'utf8'),
 ) as RecordedHelp;
+
+/** One whole page coai rendered: the options it was rendered with, the nonce read back from it, the bytes. */
+export interface RecordedPage {
+  language: HelpLanguage;
+  uiScale?: number;
+  textTone?: number;
+  nonce: string;
+  html: string;
+}
+
+/** What `scripts/record-coai-help-page.mjs` recorded from coai's own `helpPage.ts` at `1056aed9`. */
+export interface RecordedHelpPage {
+  source: string;
+  /** The synthetic input the pages were rendered over — handed to the kit unchanged. */
+  articles: HelpArticle[];
+  translations: Record<TranslatedLanguage, Record<string, HelpBody>>;
+  prompts: { groups: { role: string; ids: string[] }[]; texts: Record<string, string> };
+  /** The article coai appends its prompts to, and the twin the appendix was recovered against. */
+  promptsArticle: string;
+  twinArticle: string;
+  languages: HelpLanguage[];
+  /** coai's `promptsHtml()` output, per language — what the kit's appendix hook must return for that article. */
+  appendix: Record<HelpLanguage, string>;
+  searchIndex: Record<HelpLanguage, { id: string; title: string; haystack: string }[]>;
+  articleHtml: Record<HelpLanguage, Record<string, string>>;
+  bodyHtml: { text: string; html: string }[];
+  pages: RecordedPage[];
+}
+
+/** The help-page recording, parsed — the same one-place cast as `RECORDED`. */
+export const RECORDED_HELP_PAGE = JSON.parse(
+  readFileSync(join(__dirname, '..', '..', 'src', 'test', 'fixtures', 'coai-help-page-1056aed9.json'), 'utf8'),
+) as RecordedHelpPage;

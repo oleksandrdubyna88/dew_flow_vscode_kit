@@ -18,8 +18,12 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "scripts/help-digests.mjs"
   ],
+  "bin": {
+    "vscode-webview-kit-help-digests": "scripts/help-digests.mjs"
+  },
   "sideEffects": false,
   "engines": {
     "node": ">=20"

@@ -71,7 +71,7 @@ jobs:
       - name: Build
         run: npm run build
 
-      # What a publish would contain, read before any publish exists: `files: ["dist"]` and nothing else.
+      # What a publish would contain, read before any publish exists: `files` is `dist` plus the `help-digests` bin script, and nothing else.
       - name: Pack
         run: npm pack --dry-run
 

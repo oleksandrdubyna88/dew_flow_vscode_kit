@@ -1,6 +1,7 @@
 # PLAN — extract the help / text-size / text-tone / setting-write modules into one shared package
 
-> Status: **plan only, nothing implemented yet, 2026-10-02.** Scope: this repository's first release,
+> Status: **in progress, 2026-10-02** — epic 1, E2.S1 and E2.S2 have landed on their branches; E2.S3,
+> epic 3 and the consumer switches are open. Scope: this repository's first release,
 > `@oleksandrdubyna88/vscode-webview-kit` 0.1.0, and the switch of its two consumers.
 >
 > Cross-repository: the consumer side is named in `wsl_care · todo/PLAN_shared_vscode_kit.md` (the
@@ -192,6 +193,23 @@ webview→host trust boundary, publishing credentials).
   `catalog.ts` (`bodyFor` → `{ body, fallback, stale: 'fresh' | 'stale' | 'unknown' }`),
   `bootstrap.ts` (`stampTranslations`), `coverage.ts`. Tests: a digest vector literal, bootstrap → nothing
   stale, an English edit → exactly that article stale, a missing `from` → `unknown`, fallback unchanged.
+  *As built:* SHA-256 is a pure TypeScript `src/help/sha256.ts` (FIPS 180-4, pinned by the standard's
+  vectors and a differential run against `node:crypto`), not `node:crypto` in a host-only file: `bodyFor` is
+  on the path of the pure page module, a per-file import scan cannot see a host import one hop away, and
+  Web Crypto is asynchronous — the host allowlist did not grow. The digest keeps §2's "no other
+  normalisation" literally (a CR or a trailing space is an edit, and the tests assert that). `bodyFor` reads
+  own properties only — coai answered the Object function as the translated body of an article called
+  `constructor` (recorded by the new `scripts/record-coai-help.mjs`, which shares
+  `scripts/coai-modules.mjs` with the display recorder; that one re-records its fixture byte-identically).
+  `createCatalog` refuses, with a `TypeError` naming what and where, no articles, an empty or repeated id,
+  a body missing a field, a module for an unknown language or for `en`, a body for an unknown article, a
+  `from` without a body and a `from` that is not 8 lowercase hex; the languages are derived (English plus
+  each module, in `HELP_LANGUAGES` order). `staleTranslations` entries carry `stale: 'stale' | 'unknown'`
+  besides finding 0's four fields, with `from: null` when unknown; `everyArticleInEveryLanguage` answers
+  `{ complete, missing }`. `help-digests` takes `--export <name>` (default `catalog`) and `--kit <entry>`
+  (default `../dist/index.js`), exits 0 / 1 / 2, and re-makes the catalog with the kit's own
+  `createCatalog`; it is NOT in the package's `files` yet, so shipping it to consumers (`files` / `bin`) is
+  left to E2.S3 or E3. `src/index.ts` already exports the help catalog half; E2.S3 adds the page and panel.
 - **E2.S3 — `help/page`, `help/panel`, the index and README** (Fable: CSP and the panel's message
   validation are security; `HelpPanelPort` is public). Tests: byte-compat of the whole page for coai's
   config with an injected nonce and appendix, with teeth; the page script RUN (index ↔ article, search,

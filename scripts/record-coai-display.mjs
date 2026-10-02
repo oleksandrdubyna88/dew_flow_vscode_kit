@@ -11,7 +11,8 @@
  *   node scripts/record-coai-display.mjs <path-to-dew_flow_connect_other_ais> [ref=1056aed9]
  *
  * It extracts the source files at `ref` with `git show`, compiles them with this repository's own
- * TypeScript into a temporary directory, runs them over a fixed set of inputs and prints the JSON.
+ * TypeScript into a temporary directory (`coai-modules.mjs`, shared with `record-coai-help.mjs`), runs
+ * them over a fixed set of inputs and prints the JSON.
  *
  * <p><b>The host halves too</b> (E2.S1). `uiScaleHost.ts` and `textToneHost.ts` import `vscode`, so they
  * are compiled and run against a STUB of the three things they touch — `workspace.getConfiguration`,
@@ -19,11 +20,7 @@
  * own `node_modules/vscode`. What is recorded is what they POST to a webview for a stored offset and what
  * they WRITE for a press: the message shapes the kit's host must reproduce byte for byte.</p>
  */
-import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
-import { createRequire } from 'node:module';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { compileCoaiModules } from './coai-modules.mjs';
 
 const [coai, ref = '1056aed9'] = process.argv.slice(2);
 if (!coai) {
@@ -84,29 +81,19 @@ export declare const workspace: {
 export declare const ConfigurationTarget: { Global: number; Workspace: number; WorkspaceFolder: number };
 `;
 
-const work = mkdtempSync(join(tmpdir(), 'kit-coai-'));
+const modules = compileCoaiModules({
+  coai,
+  ref,
+  sources: [...PURE, ...HOST],
+  extra: {
+    'node_modules/vscode/package.json': JSON.stringify({ name: 'vscode', main: 'index.js', types: 'index.d.ts' }),
+    'node_modules/vscode/index.js': VSCODE_STUB_JS,
+    'node_modules/vscode/index.d.ts': VSCODE_STUB_DTS,
+  },
+});
 try {
-  for (const name of [...PURE, ...HOST]) {
-    const text = execFileSync('git', ['-C', coai, 'show', `${ref}:src_vs_code/src/${name}.ts`], { encoding: 'utf8' });
-    writeFileSync(join(work, `${name}.ts`), text);
-  }
-  const stub = join(work, 'node_modules', 'vscode');
-  mkdirSync(stub, { recursive: true });
-  writeFileSync(join(stub, 'package.json'), JSON.stringify({ name: 'vscode', main: 'index.js', types: 'index.d.ts' }));
-  writeFileSync(join(stub, 'index.js'), VSCODE_STUB_JS);
-  writeFileSync(join(stub, 'index.d.ts'), VSCODE_STUB_DTS);
-
-  // `--ignoreConfig`: TypeScript 6 refuses files on the command line while this repository's own
-  // `tsconfig.json` is in the cwd, and that config (rootDir `src`, `noEmitOnError`) is not for these files.
-  execFileSync(process.execPath, [
-    join('node_modules', 'typescript', 'bin', 'tsc'),
-    '--ignoreConfig', '--module', 'commonjs', '--target', 'ES2022', '--outDir', join(work, 'out'),
-    ...[...PURE, ...HOST].map((n) => join(work, `${n}.ts`)),
-  ], { stdio: 'inherit' });
-
-  const require = createRequire(import.meta.url);
-  const z = require(join(work, 'out', 'zoomControl.js'));
-  const t = require(join(work, 'out', 'textTone.js'));
+  const z = modules.load('zoomControl');
+  const t = modules.load('textTone');
   const out = {
     source: `dew_flow_connect_other_ais@${ref} src_vs_code/src/{zoomControl,textTone,uiScaleHost,textToneHost}.ts`,
     zoom: {},
@@ -132,9 +119,9 @@ try {
   };
 
   // The host halves, through the stub. Section and keys are coai's own (`coai.uiScale`, `coai.textTone`).
-  const vscode = require(join(stub, 'index.js'));
-  const scaleHost = require(join(work, 'out', 'uiScaleHost.js'));
-  const toneHost = require(join(work, 'out', 'textToneHost.js'));
+  const vscode = modules.loadExtra('node_modules/vscode/index.js');
+  const scaleHost = modules.load('uiScaleHost');
+  const toneHost = modules.load('textToneHost');
   const targetName = (target) => Object.keys(vscode.ConfigurationTarget).find((k) => vscode.ConfigurationTarget[k] === target) ?? String(target);
   const firstPost = (push) => {
     const posted = [];
@@ -173,5 +160,5 @@ try {
 
   process.stdout.write(JSON.stringify(out, null, 2) + '\n');
 } finally {
-  rmSync(work, { recursive: true, force: true });
+  modules.dispose();
 }

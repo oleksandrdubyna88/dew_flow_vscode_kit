@@ -77,6 +77,68 @@ change event then pushes the new value to every attached page. A page whose `pos
 `false` or rejects is reported through `pushNotDelivered` and detached. `display.dispose()` on
 deactivate unhooks everything.
 
+### The help catalog: stale translations fail YOUR build
+
+Your articles stay yours: English in one module, one module per translated language, each a
+`{ bodies, from }` — `from` records, per article, the digest of the English the translation was made from.
+
+```ts
+// helpRu.ts
+import type { Translation } from '@oleksandrdubyna88/vscode-webview-kit';
+
+export const RU: Translation = {
+  bodies: { 'install-the-server': { title: '…', whatItIs: '…', why: '…', setup: '…', usage: '…', whatCanGoWrong: '…' } },
+  from: { 'install-the-server': '1a2b3c4d' },
+};
+
+// helpCatalog.ts
+import { createCatalog } from '@oleksandrdubyna88/vscode-webview-kit';
+
+export const catalog = createCatalog({ articles: HELP_ARTICLES, translations: { ru: RU, uk: UK, de: DE, es: ES } });
+```
+
+`createCatalog` refuses a malformed catalog when the extension loads (a body for an article that does not
+exist, a missing field, a `from` that is not 8 lowercase hex, …), naming what and where.
+`bodyFor(catalog, article, language)` answers `{ body, fallback, stale }`: the translation, or English with
+`fallback: true`; `stale` is `fresh`, `stale` (its `from` is an older English digest) or `unknown` (it has
+no `from`).
+
+**Stamp once.** Translation modules that predate the kit have no `from`, so every body reads `unknown`.
+Stamp them a single time, on the assumption that what you ship today matches today's English, and paste the
+result into the modules:
+
+```ts
+import { stampTranslations } from '@oleksandrdubyna88/vscode-webview-kit';
+import { catalog } from './helpCatalog';
+
+for (const [language, translation] of Object.entries(stampTranslations(catalog))) {
+  console.log(language, JSON.stringify(translation.from, null, 2));   // → that module's `from`
+}
+```
+
+Never call `stampTranslations` from the extension or a build: it would declare every translation fresh
+forever.
+
+**Then assert, in your own suite**, so an English edit committed without its translations goes red there
+instead of reaching a reader:
+
+```ts
+import { everyArticleInEveryLanguage, staleTranslations } from '@oleksandrdubyna88/vscode-webview-kit';
+import { catalog } from '../helpCatalog';
+
+test('every translation was made from the current English', () => {
+  assert.deepEqual(staleTranslations(catalog), []);   // each entry: { article, language, stale, from, current }
+});
+
+test('every article exists in every language the switch offers', () => {
+  assert.deepEqual(everyArticleInEveryLanguage(catalog).missing, []);
+});
+```
+
+When it goes red, re-check each listed translation against its English article and set its `from` to the
+entry's `current`. In this repository `node scripts/help-digests.mjs <compiled catalog module>` prints
+exactly those lines, grouped by language; it is not in the published package yet.
+
 ## Develop
 
 See [.agents/PROJECT.md](.agents/PROJECT.md) for the commands and the rules this repository follows.

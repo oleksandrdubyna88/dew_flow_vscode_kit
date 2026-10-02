@@ -6,4 +6,4 @@ Plans for work that is not finished. A finished plan moves to `research/` with s
 
 | Plan | Status | Scope |
 |---|---|---|
-| [PLAN_extract_the_kit.md](PLAN_extract_the_kit.md) | plan only (2026-10-02) | the first release: help, display, settings and webview modules extracted from ConnectOtherAIs |
+| [PLAN_extract_the_kit.md](PLAN_extract_the_kit.md) | in progress (2026-10-02): epic 1, E2.S1, E2.S2 landed | the first release: help, display, settings and webview modules extracted from ConnectOtherAIs |

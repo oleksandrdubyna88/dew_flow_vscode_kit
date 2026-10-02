@@ -1,9 +1,9 @@
 # Architecture — dew_flow_vscode_kit
 
 > Being built along [../todo/PLAN_extract_the_kit.md](../todo/PLAN_extract_the_kit.md): epic 1 (the
-> machinery and the pure modules) and E2.S1 (the display host) have landed; the help subsystem
-> (E2.S2, E2.S3) and the release pipeline (epic 3) have not. This file describes what exists and is
-> rewritten as each module lands.
+> machinery and the pure modules), E2.S1 (the display host) and E2.S2 (the help catalog, its digest and
+> coverage checks) have landed; the help page and panel (E2.S3) and the release pipeline (epic 3) have
+> not. This file describes what exists and is rewritten as each module lands.
 
 ## What this package is
 
@@ -23,8 +23,9 @@ imports `vscode` — `src/test/architecture.test.ts` fails the build if a pure m
 | `settings` | `settingWritten.ts` — the "a view setting could not be saved" reporter, consumer funnel injected | landed (E1.S2) |
 | `display` — pure halves | `config.ts` (`createDisplayConfig`, prefix validation), `zoom.ts`, `tone.ts`, `messages.ts` | landed (E1.S3; `messages.ts` E2.S1) |
 | `display` — host | `port.ts` (`ConfigurationPort`, `WebviewPort`), `press.ts` (`readPress`), `host.ts` (`createDisplayHost`) | landed (E2.S1) |
-| `help` | catalog, digest, page, panel | not built (E2.S2, E2.S3) |
-| package entry | `src/index.ts` — exports `display` and `settings`; `text`, `webview` and `help` follow in E2.S3 | partial |
+| `help` — catalog | `types.ts`, `sha256.ts`, `digest.ts` (`digestOf`), `catalog.ts` (`createCatalog`, `bodyFor`), `bootstrap.ts` (`stampTranslations`), `coverage.ts` (`staleTranslations`, `everyArticleInEveryLanguage`) | landed (E2.S2) |
+| `help` — page, panel | `page.ts`, `panel.ts` | not built (E2.S3) |
+| package entry | `src/index.ts` — exports `display`, `settings` and the help catalog; `text`, `webview` and the help page and panel follow in E2.S3 | partial |
 
 ## The display module
 
@@ -91,6 +92,97 @@ never retyped.
 **Growth** (plan §5): one write queue per setting, as long as the presses not yet written; one attachment
 per open page, each leaving on dispose, detach or a failed push. No files, no caches.
 
+## The help module — the catalog half (E2.S2)
+
+The help page reads one catalog: the consumer's articles (English, in index order) and one translation
+module per language. `createCatalog` checks that input once; `bodyFor(catalog, article, language)` answers
+`{ body, fallback, stale }`. The page and the panel that render it are E2.S3.
+
+```mermaid
+flowchart TB
+  subgraph consumer["Consumer extension — owns the content"]
+    articles["articles: id plus the English body"]
+    modules["one translation module per language: bodies and from"]
+    ci["its own test: staleTranslations and everyArticleInEveryLanguage asserted empty"]
+  end
+  subgraph kit["Kit — src/help, pure, no vscode and no node: import"]
+    create["createCatalog: validate once, derive the languages"]
+    catalog["Catalog: languages, articles, translations"]
+    bodyFor["bodyFor: body, fallback, stale"]
+    digest["digestOf: six fields joined by U+0000, UTF-8, SHA-256, first 8 hex"]
+    sha["sha256.ts: FIPS 180-4, pure TypeScript"]
+    coverage["coverage.ts: staleTranslations, everyArticleInEveryLanguage"]
+    stamp["stampTranslations: the one-time bootstrap"]
+  end
+  script["scripts/help-digests.mjs: prints each stale or unknown pair with its replacement from line"]
+  articles --> create
+  modules --> create
+  create --> catalog
+  catalog --> bodyFor
+  bodyFor -- "from against the current English digest" --> digest
+  digest --> sha
+  catalog --> coverage
+  coverage -- "decides through bodyFor" --> bodyFor
+  catalog --> stamp
+  stamp -- "from maps pasted once" --> modules
+  coverage --> ci
+  catalog --> script
+  script -- "lines pasted after a re-check" --> modules
+```
+
+**`body` and `fallback` are coai's.** For an article in English, the English body; in another language,
+that module's own body, or English with `fallback: true` when it has none. The answers are held against
+ConnectOtherAIs' own `bodyFor`, RECORDED by `scripts/record-coai-help.mjs` from coai's `helpContent.ts` at
+`1056aed9` — over small partial translation modules written by the recorder, and over coai's real id
+coverage (33 articles, four modules) — into `src/test/fixtures/coai-help-1056aed9.json`. One deviation, with
+the evidence in the recording: coai looked a body up through the prototype, so an article whose id is a
+key of `Object.prototype` (`constructor`) got the Object function back as its "translation"; the kit reads
+own properties only and answers the English fallback.
+
+**`stale` is the kit's.** Each translation module is `{ bodies, from }`: `from` maps an article id to the
+digest of the English body it was translated from. `fresh` when that equals the current English digest
+(and always for English itself and for a fallback, which ARE the current English), `stale` when it
+differs, `unknown` when the module records no `from` for a body it has — never assumed fresh.
+
+**The digest** (`digest.ts`, plan §2): the six fields in the fixed order `title`, `whatItIs`, `why`,
+`setup`, `usage`, `whatCanGoWrong`, joined with U+0000, UTF-8, no other normalisation — a CR, a trailing
+space, a decomposed accent are each an edit of the English — then the first 8 hex characters of SHA-256.
+32 bits is a change detector, never an integrity check.
+
+**Why SHA-256 is pure TypeScript here and not `node:crypto`.** `bodyFor` is on the path of the PURE page
+module (E2.S3 renders the stale note from it), and `architecture.test.ts` scans each file for `vscode` /
+`node:` imports — a host-only `digest.ts` would have made `catalog.ts`, and through it the page, host-bound
+by import while every per-file scan stayed green. Web Crypto's `subtle.digest` is asynchronous and would
+make `bodyFor` a promise. So `sha256.ts` is a plain FIPS 180-4 implementation (~100 lines), used for change
+detection only, pinned by the standard's five vectors and a differential run against `node:crypto` over
+every length 0–200 and 300 seeded random strings (lone surrogates included). The host allowlist did not
+grow: the only `node:` import outside the tests is still `src/webview/nonce.ts`.
+
+**The boundary.** `createCatalog` refuses, with a `TypeError` naming what, where and what would be
+accepted: no articles; an empty or repeated id; a body missing any of the six fields (English or
+translated); a module for a language the help does not have (or for `en`); a translated body for an article
+the catalog does not have; a `from` entry with no body beside it; a `from` that is not 8 lowercase hex. The
+languages are derived — English, then each language with a module, in `HELP_LANGUAGES` order. Input is
+never written; the catalog is a new, frozen object.
+
+**What a consumer's CI asserts** (epic 2 plan round, finding 0). `staleTranslations(catalog)` lists every
+translated body that is `stale` or `unknown` as `{ article, language, stale, from, current }` (`from` is
+`null` when unknown), in article then language order; a consumer asserts it empty, so an English edit
+committed without its translations fails that consumer's build rather than reaching a reader.
+`everyArticleInEveryLanguage(catalog)` is coai's "every article exists in every language" check, as
+`{ complete, missing }`. Both decide through `bodyFor`, so neither can disagree with what a reader sees.
+
+**The bootstrap and the script.** `stampTranslations(catalog)` returns new modules with every body's `from`
+stamped to today's English digest — run ONCE at a consumer's switch, on the stated assumption that its
+shipped translations match today's English, and the result pasted into its modules; run on every build it
+would switch stale detection off. After a deliberate re-translation, `scripts/help-digests.mjs <compiled
+catalog module> [--export name] [--kit entry]` re-makes the catalog with the kit's own `createCatalog`,
+prints exactly `staleTranslations`' pairs grouped by language with the replacement `from` line for each,
+and exits 1 (0 when nothing is stale, 2 on a usage, load or validation error). It is in this repository
+only for now: `package.json` `files` is still `["dist"]`, so shipping it to consumers is open (E2.S3 or E3).
+
+**Growth:** none. The catalog is made once from the consumer's constants; nothing is cached or kept.
+
 ## The test harness
 
 See [module_tests.md](module_tests.md): the page-script sandbox, the strict display fakes, the flow
@@ -102,8 +194,10 @@ catalogue, and what the suite does not prove.
   `dist/`, `files: ["dist"]`, no `dependencies`), `tsconfig.json` (coai's strict set, ES2022 without DOM,
   `noEmitOnError`), `tsconfig.build.json` (declarations into `dist/`, tests excluded), `eslint.config.mjs`
   (type-aware, `complexity 4` / `max-lines-per-function 50` on `src/**`, `linebreak-style unix`),
-  `scripts/run-tests.mjs` (readdir discovery, `node --test`), `scripts/clean.mjs`,
-  `scripts/record-coai-display.mjs`.
+  `scripts/run-tests.mjs` (readdir discovery, `node --test`), `scripts/clean.mjs`, the two coai
+  recorders `scripts/record-coai-display.mjs` and `scripts/record-coai-help.mjs` over their shared
+  `scripts/coai-modules.mjs` (extract coai sources at a ref, compile them, load them), and
+  `scripts/help-digests.mjs`.
 - **CI:** `.github/workflows/ci.yml` runs the whole chain — conventions check, plan lifecycle, typecheck,
   lint, test, build, `npm pack --dry-run` — on `ubuntu-latest` AND `windows-latest`, every action pinned to a
   commit SHA; `pr-title.yml`, `coderabbit-review.yml` + `.coderabbit.yaml`, `dependabot.yml`.

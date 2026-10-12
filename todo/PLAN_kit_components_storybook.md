@@ -1,0 +1,495 @@
+# PLAN — kit 0.2.0: Tabs, DataTable, RecommendationCard, theme tokens, and a Storybook
+
+> Status: **plan only, nothing implemented yet, 2026-10-12.** Scope: a new `src/components/` module with its
+> own package entry (`./components`) and stylesheet (`./components.css`), a Storybook (devDependencies only),
+> axe and contrast checks in CI, and the docs. This is story **E18.K1** of wsl_care's epic E18
+> (`wsl_care · todo/PLAN_disk_health.md` §3.4 and its E18 table, issue oleksandrdubyna88/wsl_care#87),
+> started on the owner's go of 2026-10-12.
+>
+> Paired plans: `wsl_care · todo/PLAN_disk_health.md` §3.4 (the same table as §2 below, written there first) and
+> this repository's [PLAN_extract_the_kit.md](PLAN_extract_the_kit.md) (0.1.0), the first step of the order.
+
+## 1. Goal
+
+wsl_care's full view (its E18.W1) needs tabs that carry a status, a table people can sort, search and reveal a
+redacted value in, and a card that says what to do about the worst problem — in a webview whose CSP is
+`default-src 'none'; script-src 'nonce-…'; style-src 'nonce-…'` (`wsl_care · src_vs_code/src/panel/panelHtml.ts:60`,
+at `413242c4`) and whose page script is run by a harness that refuses `innerHTML`, `style`, and every tag,
+attribute and event it does not model (`wsl_care · src_vs_code/src/test/support/pageHarness.ts:30`, `:33`, `:36`,
+`:200`). Built in wsl_care it would be a copy the next extension makes again; built here it is one
+implementation both extensions bundle.
+
+What must be true when this plan is done:
+
+1. `@oleksandrdubyna88/vscode-webview-kit/components` exports `createTabs`, `createDataTable`,
+   `createRecommendationCard` and the status tones; `@oleksandrdubyna88/vscode-webview-kit/components.css` is
+   their one stylesheet. Both are importable by a consumer's esbuild bundle for the WEBVIEW (`platform:
+   'browser'`) — nothing in the components' import closure reaches `node:` or `vscode`.
+2. The components build DOM with `createElement` / `textContent` / `setAttribute` only — no `innerHTML`, no
+   `style`, no inline handler — and colour comes from CSS classes and theme tokens mapped onto VS Code's
+   `--vscode-*` variables, so light, dark and high-contrast themes are VS Code's to set.
+3. Behaviour is tested by RUNNING the components, against a strict fake DOM AND against jsdom; every
+   component × state is in a Storybook (`@storybook/html-vite` + `@storybook/addon-a11y`) with light / dark /
+   high-contrast × three font sizes; axe-core runs over every one of those states in CI, and the theme
+   tokens' contrast is checked against representative values of VS Code's built-in themes.
+4. The package keeps ZERO runtime dependencies; `files` stays `dist` + the digests bin; no Storybook file ships.
+5. The first version wsl_care can pin is 0.2.0 (§7).
+
+Constraints (`.agents/PROJECT.md`): pure modules never import `vscode` or `node:`; a page script is tested by
+running it; user-facing text is English; no runtime dependency. No wsl_care-specific component and no domain
+words: every label, unit, number format, sentence and revealed value is the consumer's.
+
+## 2. The boundary with wsl_care (the same table as `wsl_care · todo/PLAN_disk_health.md` §3.4)
+
+| Item | `dew_flow_vscode_kit` builds | wsl_care builds |
+|---|---|---|
+| `Tabs`, `DataTable`, `RecommendationCard`, theme tokens; the display controls and Help viewer (exist) | the components, their CSS (classes only), their tests, axe checks, the Storybook (every component × state × light / dark / high contrast × three font sizes), release 0.2.0 | nothing of the components — it consumes them |
+| the data shown, the units, the redaction, the reveal, the recommendation's words | nothing (consumer-supplied callbacks and strings) | everything (E18.W1–W3; the daemon makes the words) |
+| the order | 0.1.0 (its E3, [PLAN_extract_the_kit.md](PLAN_extract_the_kit.md)) → K1 (this plan) → 0.2.0 on npmjs | W0 starts only after 0.2.0 is published (or the kit's `pack-and-consume` tarball as a bridge, never committed) |
+| disjoint | no wsl_care-specific component, no `vscode` API in the webview components | no copy of a kit component, ever (`common.reuse-first`) |
+
+The table is complete, not a list of examples: anything not in the first column's left cell is wsl_care's.
+Two consequences for wsl_care's W0 that this plan makes explicit rather than leaving to discovery:
+
+- **Its strict harness must widen by exactly the DOM surface of §4.3** — `input`, `keydown`, `focus()`, and the
+  attributes `id`, `tabindex`, `aria-*` (already allowed) — each widening a RED test there, as its W0 row says.
+- **The existing display controls' page scripts write `document.body.style`** (`src/display/zoom.ts:67`,
+  `src/display/tone.ts:110-112`), which wsl_care's harness refuses. That is CSSOM, which a nonce-only
+  `style-src` does not block, but it is wsl_care's decision whether its harness models it; K1 does not rewrite
+  those controls (they are byte-compatible with ConnectOtherAIs, `research/architecture.md` § The display module).
+
+## 3. Where things are today (verified 2026-10-12, `main` @ `e4813be`)
+
+- The package has ONE entry: `src/index.ts:1-116`, exported as `"."` (`package.json:13-19`), which re-exports
+  `nonce` (`src/index.ts:79`) — and `src/webview/nonce.ts` imports `node:crypto`. A webview bundle that imported
+  the root entry would pull `node:crypto` into a browser build (esbuild refuses to resolve it for
+  `platform: 'browser'`). Hence a second entry (§4.2).
+- `package.json` has `"sideEffects": false` (`:27`): esbuild drops a bare `import '…/components.css'` from a
+  package marked side-effect-free, so the CSS would silently vanish from the consumer's bundle. §4.2 changes it.
+- `tsconfig.json:11` is `lib: ["ES2022"]` on purpose (no DOM globals in pure modules). The components therefore
+  take the document as a PORT (§4.3) — which is also what makes them testable without a global `document`.
+- `tsconfig.build.json:10` excludes `src/test` from `dist/`; the gallery (§5.1) lives under `src/test/` so it
+  never ships.
+- `scripts/pack-and-consume.mjs:69` requires `dist/index.js` + `dist/index.d.ts`, and `:173` refuses anything
+  under `dist/` that is not `.js` / `.d.ts` — the CSS must be admitted there, derived from the manifest's
+  `exports` rather than retyped. Its bundle step (`:225-249`) bundles for `platform: 'node'` only; a webview
+  entry for `platform: 'browser'` is added (§6).
+- `src/test/architecture.test.ts:20` (host allowlist: `nonce.ts`) and `:103` (`PAGE_MODULES`, whose import
+  closure must not reach a host module) — the components join that list, and the new entry's closure must not
+  reach `nonce.ts` while the root entry's still must.
+- `src/test/exports.test.ts:15-47` pins the root entry name by name; the components entry gets its own pinned
+  list, and the root list does not change.
+- `src/test/pageHarness.ts` runs STRING page scripts in `node:vm`; it stays as is. The components are TypeScript
+  functions over an injected document, so their strict fake is a new `src/test/fakeDom.ts` (§5.2).
+- CI (`.github/workflows/ci.yml`) runs conventions check, plan lifecycle, typecheck, lint, test, build and
+  `npm pack --dry-run` on ubuntu-latest and windows-latest, plus the reusable `pack-and-consume.yml`.
+
+## 4. Design
+
+### 4.1 DOM builders, not HTML strings — decided
+
+The consumer's pages build their DOM in the webview from posted data (`panelHtml.ts`' shell carries no data; the
+page script fills it). A string renderer would need `innerHTML` in the webview — refused by wsl_care's harness —
+or a host-rendered page, which is not how wsl_care's full view works. So each component is a function
+`(doc, options) → view`, run in the webview, that creates elements with `createElement`, writes text with
+`textContent` (never parsed), and wires its own listeners. No string ever becomes markup, so the kit's escapers
+are not needed here; `src/test/scriptInterpolation.test.ts` keeps scanning every shipped source.
+
+### 4.2 The package surface
+
+| Specifier | File | Holds |
+|---|---|---|
+| `@oleksandrdubyna88/vscode-webview-kit` | `dist/index.js` | unchanged — the 0.1.0 host + page API |
+| `…/components` | `dist/components/index.js` (+ `.d.ts`) | `createTabs`, `createDataTable`, `createRecommendationCard`, `STATUS_TONES`, their types |
+| `…/components.css` | `dist/components/components.css` | the theme tokens and every component rule |
+
+- `exports` gains `"./components"` (`types` / `require` / `default`) and `"./components.css"`.
+- `sideEffects` becomes `["*.css"]`, so a bare CSS import survives tree-shaking while every JS module stays
+  side-effect-free.
+- `npm run build` copies `src/components/components.css` into `dist/components/` after `tsc`
+  (`scripts/copy-css.mjs`, deleting nothing outside `dist/`).
+- The components entry imports nothing outside `src/components/` — its closure is the four component files,
+  `dom.ts` and `status.ts`; the architecture test holds it (§5.2, item 21).
+
+A consumer (wsl_care's `src/webview/fullView.ts → media/full.js` + `media/full.css`):
+
+```ts
+import { createDataTable, createTabs, createRecommendationCard } from '@oleksandrdubyna88/vscode-webview-kit/components';
+import '@oleksandrdubyna88/vscode-webview-kit/components.css'; // esbuild emits it beside the JS as full.css
+```
+
+### 4.3 The DOM port — what the components touch, and nothing else
+
+`src/components/dom.ts` declares the slice of the DOM the components use, F-bounded so that a real `Document`
+fits without a cast and the elements come back typed as the consumer's own (`HTMLElement`):
+
+```ts
+export interface KitEvent { readonly key?: string; preventDefault(): void }
+export interface KitElement<E> {
+  readonly tagName: string;
+  textContent: string | null;
+  className: string;
+  hidden: boolean | string;           // lib.dom types it boolean | "until-found"; the kit writes booleans
+  setAttribute(name: string, value: string): void;
+  appendChild(child: E): unknown;      // re-appending an attached child MOVES it — how a sort reorders rows
+  addEventListener(type: 'click' | 'keydown' | 'input', listener: (event: KitEvent) => void): void;
+  focus(): void;
+}
+export interface KitDocument<E> { createElement(tag: KitTag): E }
+```
+
+Measured before writing this plan (scratch check, TypeScript 6.0.3, `lib: ES2022, DOM`, `module: commonjs` and
+`node16`): `make(document)` against this shape compiles, infers `E = HTMLElement`, and the result appends to
+`document.body` with no cast. An input's `value` is read through an `unknown` widening and a `typeof` check, never
+a cast to a DOM type.
+
+**The surface, which is also what wsl_care's harness must model** (§2):
+
+| What | Used |
+|---|---|
+| tags (`KitTag`) | `div`, `span`, `strong`, `p`, `ul`, `li`, `button`, `input`, `table`, `thead`, `tbody`, `tr`, `th`, `td` |
+| attributes (`setAttribute`) | `role`, `id`, `type`, `tabindex`, `scope`, `colspan`, `aria-selected`, `aria-controls`, `aria-labelledby`, `aria-label`, `aria-sort`, `aria-hidden`, `data-kit-*` — never `style`, `on*`, `src`, `href` |
+| members | `className`, `textContent` (strings only), `hidden`, `focus()`, an input's `value` (read) |
+| events | `click` (tabs, sort and reveal buttons), `keydown` (the tablist: arrows, Home, End), `input` (the search box) |
+
+### 4.4 The status tones
+
+`STATUS_TONES = ['neutral', 'info', 'ok', 'warning', 'critical']`, and a `StatusMark` is `{ tone, word }`. The
+WORD is required and non-empty wherever a tone is shown — colour is never the only signal. A tone paints a glyph
+(`aria-hidden="true"`: `•`, `ℹ`, `✓`, `⚠`, `✕`) and a border in the tone's colour; the word is drawn in the normal
+foreground, so it never depends on a tone colour's contrast. ("Tone" here is a STATUS tone; the existing ± text
+tone in `src/display/tone.ts` is a different thing, and the type is named `StatusTone` to keep them apart.)
+
+### 4.5 `Tabs`
+
+```ts
+createTabs(doc, {
+  idPrefix: 'full',                                  // [a-z][a-z0-9-]*, unique per page: tab and panel ids derive from it
+  label: 'Sides',                                    // the tablist's aria-label
+  tabs: [{ id: 'wsl', label: 'WSL: Ubuntu', content, status: { tone: 'warning', word: '2 warnings' } }, …],
+  selected: 'wsl',                                   // optional; the first tab otherwise
+  onSelect: (id) => …,                               // optional; called on a USER's selection only
+}) → { root, select(id), selected(), setStatus(id, mark | null) }
+```
+
+The WAI-ARIA tabs pattern with automatic activation: `div role=tablist aria-label`, each tab a
+`button role=tab type=button` with `id`, `aria-controls`, `aria-selected`, and a roving `tabindex` (`0` on the
+selected tab, `-1` elsewhere); each panel `div role=tabpanel aria-labelledby tabindex=0`, hidden unless selected,
+holding the consumer's `content` element. Keys on the tablist: ArrowRight / ArrowLeft move and select (wrapping),
+Home / End the first / last, each with `preventDefault` and `focus()` on the new tab; any other key does nothing.
+A click selects. `setStatus` replaces one tab's mark live (wsl_care's tones change as data arrives) or removes it.
+Refused with a `TypeError` naming what: no tabs, a repeated or malformed id, an empty label, a `selected` that is
+not a tab, a mark with an unknown tone or an empty word.
+
+### 4.6 `DataTable`
+
+```ts
+createDataTable(doc, {
+  label: 'Processes',                                // the table's aria-label
+  columns: [
+    { key: 'pid', header: 'PID', value: (r) => r.pid, align: 'end' },
+    { key: 'held', header: 'Held', value: (r) => r.heldBytes, format: (v) => toMiB(v), align: 'end' },   // the consumer's unit
+    { key: 'program', header: 'Program', value: (r) => r.program },
+  ],
+  rows,
+  search: { label: 'Search processes' },             // optional
+  reveal: { header: 'Command line', button: (row) => `Show the command line of ${row.program}`, onReveal: (index) => post({ type: 'reveal', index }) }, // optional
+  emptyText: 'No process matches.',                  // optional, English default
+  sort: { key: 'held', direction: 'descending' },    // optional initial sort
+}) → { root, setRows(rows), reveal(index, text), sortBy(key, direction), filter(query), order() }
+```
+
+- **Values and formats are the consumer's.** `value(row)` is `string | number | null` and is what sorts;
+  `format(value, row)` is what shows (default `String(value)`); `null` is ABSENT, shown as `—`, never passed to
+  `format`, and sorted last in both directions (`common.coding-style`: absent is not zero). Numbers compare
+  numerically, strings by `Intl.Collator('en', { numeric: true, sensitivity: 'base' })`, numbers before strings,
+  ties by the original index (stable).
+- **Sort by click / Enter / Space.** A sortable header is `th scope=col aria-sort` holding a `button type=button`
+  (the header text and an `aria-hidden` ▲/▼); `aria-sort` is `ascending` / `descending` on the sorted column
+  and `none` on the other sortable ones; a non-sortable column has no button and no `aria-sort`. A click sorts
+  ascending, a second click on the same column descending, and so on. Enter and Space reach the button as a
+  click — the browser's own activation behaviour for `<button>` — so the kit adds no key handler (a second one
+  would sort twice); the tests prove the header IS a `button type=button` and that its click sorts, and the
+  Storybook is where a real keyboard is used (§8 says what that does not prove).
+- **Search.** An `input type=search aria-label` above the table; on `input`, rows whose SHOWN text (the formatted
+  cells, case-insensitive, trimmed query) does not contain the query are `hidden`. A `div role=status` says
+  `Showing 3 of 10 rows.` (English default; `countText(shown, total)` overrides), and an empty result shows one
+  row spanning every column with `emptyText`.
+- **Reveal posts only an index, and the hidden text is never in the DOM before it is revealed.** The reveal
+  column holds, per row, a `button type=button` with the consumer's `button(row)` text as its `aria-label` and
+  `Show` as its text; a click calls `onReveal(index)` with ONE argument, the row's index in the `rows` the
+  consumer gave (not its position after a sort or a search). The kit never receives the hidden text until the
+  consumer calls `reveal(index, text)`, which replaces THAT row's button with the text. `setRows` drops every
+  revealed text — a new row at index 3 never shows the old row 3's secret.
+- Refused with a `TypeError`: no columns, a repeated or malformed key, an empty header or label, a
+  `sort.key` that is not a sortable column, `reveal(index, …)` outside the rows or without a reveal column, a
+  non-string revealed text.
+
+### 4.7 `RecommendationCard`
+
+```ts
+createRecommendationCard(doc, {
+  tone: 'warning', word: 'Warning',
+  sentence: 'Memory is low: 6 % available. Drop caches to free about 2.1 GiB.',
+  action: button,                                    // optional: ONE element the consumer built, which must be a BUTTON
+  evidence: ['WSL RAM available 6 %', 'Swap 92 % used'],   // optional
+  evidenceLabel: 'Why',                              // optional, English default 'Evidence'
+}) → root
+```
+
+`div.kit-rec.kit-rec--<tone>`: a header line with the tone glyph (`aria-hidden`) and the word (`strong`), the
+sentence (`p`), the action slot (`div`, holding the consumer's button as given — the kit wires nothing on it), and
+the evidence (`p` label + `ul` of `li`). Refused: an unknown tone, an empty word or sentence, an action that is
+not a `BUTTON`, an empty evidence entry.
+
+### 4.8 Theme tokens and the stylesheet
+
+`src/components/components.css`, classes only, every size in `em` so the ± text size scales it:
+
+- **Tokens** are declared on each component root (`.kit-tabs, .kit-table, .kit-rec`) — not on `:root`, because a
+  custom property holding `var()` resolves where it is DECLARED, and a Storybook matrix cell (or a consumer's
+  sub-panel) that sets its own `--vscode-*` values must be followed. Each maps onto a `--vscode-*` variable:
+  `--kit-fg` ← `foreground`, `--kit-muted-fg` ← `descriptionForeground`, `--kit-bg` ← `editor-background`,
+  `--kit-border` ← `panel-border`, `--kit-focus-mark` ← `focusBorder`, `--kit-tab-fg` / `--kit-tab-active-fg` /
+  `--kit-tab-active-mark` ← `panelTitle-*`, `--kit-input-fg` / `-bg` / `-border` ← `input-*`,
+  `--kit-row-hover-bg` ← `list-hoverBackground`, `--kit-link-fg` ← `textLink-foreground`, and the tones
+  `--kit-tone-neutral-mark` ← `descriptionForeground`, `--kit-tone-info-mark` ← `editorInfo-foreground`,
+  `--kit-tone-ok-mark` ← `charts-green`, `--kit-tone-warning-mark` ← `list-warningForeground` falling back to
+  `editorWarning-foreground`, `--kit-tone-critical-mark` ← `list-errorForeground` falling back to
+  `errorForeground`. Why these and not the obvious ones — measured against the resolved theme values of §5.4
+  before writing this: Light Modern's `testing.iconPassed` is `#73C991` and its `editorWarning.foreground`
+  `#BF8803`, both below 3:1 on its white editor; `list.warningForeground` / `list.errorForeground` are UNSET in
+  both high-contrast themes (`listColors.ts:94`, `:97`, hcDark/hcLight `null`), so VS Code emits no variable
+  and the fallback is what paints there.
+- **Light / dark / high contrast are VS Code's**: the variables change with the theme. High contrast adds
+  `--vscode-contrastBorder` / `--vscode-contrastActiveBorder` outlines on the selected tab, the focused control
+  and the card, under `.vscode-high-contrast` / `.vscode-high-contrast-light` (an ancestor class, so a Storybook
+  matrix cell can carry it).
+- **Focus is always visible**: `:focus-visible` draws `--kit-focus-mark`.
+- No `url(`, no `@import`, no `!important`, no `expression` — the stylesheet is loaded under a nonce and must
+  fetch nothing.
+- **Naming convention the contrast check derives its pairs from** (§5.4): a token ending `-fg` is TEXT and needs
+  4.5:1 against `--kit-bg` (or against its own `-bg` sibling when one exists); a token ending `-mark` is a
+  NON-TEXT indicator (focus, the selected tab, a tone) and needs 3:1 against `--kit-bg`. `-border` and `-bg`
+  tokens are the theme's own decoration (Light Modern's `panel.border` `#E5E5E5` and `input.border` `#CECECE` are
+  VS Code's choice on white) and are not held to a ratio — what identifies a control here is its text and the
+  `-mark` colours, never a border alone.
+
+### 4.9 The Storybook
+
+- `@storybook/html-vite` with `@storybook/addon-a11y`, devDependencies only. `.storybook/main.ts` (stories
+  `stories/*.stories.ts`, telemetry disabled), `.storybook/preview.ts` (two toolbar globals — theme: light,
+  dark, high-contrast dark, high-contrast light; size: 11 px, 13 px, 18 px — and a decorator that sets the
+  body's `vscode-*` theme class and the `--vscode-font-size` / font size), `.storybook/vscode-themes.css`
+  (representative `--vscode-*` values per theme, §5.4, each with its source).
+- **One source of truth for the states**: `src/test/gallery/*.ts` — for each component, a list of
+  `{ id, title, render(doc) }` cases (Tabs: default, a status per tone, many tabs, the second selected; DataTable:
+  unsorted, sorted ascending / descending, with absent values, searched with hits, searched with none, revealed,
+  without search or reveal; RecommendationCard: each tone, with and without action and evidence). Storybook's CSF
+  files (`stories/*.stories.ts`) export one story per case — `export const SortedDescending = story('dataTable',
+  'sorted-descending')` — because CSF is indexed STATICALLY and cannot loop; `src/test/stories.test.ts` holds the
+  exports equal to the gallery, both ways.
+- **The matrix**: each component also has a `Matrix` story — every state × the four themes × three sizes on one
+  page, each cell a wrapper carrying the theme class and size class — so "every component × state × theme ×
+  size" is one screen and one axe run in the browser panel.
+- **The existing parts**: `Display controls` (the ± size and ± tone markup from `zoomControlHtml` /
+  `toneControlHtml` at −5, 0, +5, with their CSS) and `Help viewer` (`renderHelpPage` over a small catalog: English,
+  a translation, a stale translation, a fallback — in an `iframe srcdoc`, with a story-only `acquireVsCodeApi`
+  stub under the page's own nonce). Rendered as they are; not rewritten.
+- `npm run storybook` (dev) and `npm run build-storybook` (static, into git-ignored `storybook-static/`).
+
+### 4.10 axe in CI — the route, and why
+
+**Chosen: axe-core over jsdom, inside `npm test`.** `src/test/axe.test.ts` renders every gallery case into a
+jsdom document with the kit's stylesheet, injects `axe.source` into that window, and asserts zero violations for
+the WCAG 2.x A/AA rule tags. It is the cheapest robust route: no browser download, no second test runner, it runs
+in the job that already exists on ubuntu AND windows, and it reads the same gallery Storybook shows, so a state
+added to Storybook is a state axe checks. A companion test feeds axe a deliberately broken case (a tab with no
+name) and asserts it IS reported, so a dead axe cannot pass vacuously (`common.testing`).
+
+Refused alternatives: the Storybook test-runner (Playwright) needs a browser installed on every CI leg — minutes
+and a large download per run, and a second runner whose failures are about browsers; `@storybook/addon-vitest`
+needs the same browser plus Vitest beside `node --test`.
+
+What jsdom cannot judge: rules that need layout or rendering — colour contrast above all — come back
+"incomplete", not "passed". Contrast is covered separately by §5.4 (the tokens against representative theme
+values, computed); the Storybook a11y panel shows axe's contrast verdict in a real browser, by hand.
+
+### 4.11 Dependencies (devDependencies only — `dependencies` stays absent)
+
+Licence first, then version (`csharp.nuget-packages` § Licence before version, any ecosystem); each version at
+least ~2 weeks old on 2026-10-12 and pinned EXACTLY (the coordinator's instruction for this story):
+
+| Package | Version | Published | Licence |
+|---|---|---|---|
+| `storybook` | 10.6.0 | 2026-09-02 | MIT |
+| `@storybook/html-vite` | 10.6.0 | 2026-09-02 | MIT |
+| `@storybook/addon-a11y` | 10.6.0 | 2026-09-02 | MIT |
+| `vite` (peer of html-vite `^5 \|\| ^6 \|\| ^7 \|\| ^8`) | 8.3.1, unless `npm audit` names an advisory that only a newer patch fixes (four vite lines were patched on one day, 2026-10-06) — then that patch, recorded with the advisory | 2026-09-24 | MIT |
+| `axe-core` | 4.13.0 | 2026-08-05 | MPL-2.0 (file-level copyleft; a dev tool here, never bundled or shipped) |
+| `jsdom` | 30.1.1 | 2026-09-22 | MIT (engines: node `^22.22.2 \|\| ^24.15.0 \|\| >=26`; CI runs Node 22) |
+
+10.6.1 (2026-09-29), axe-core 4.14.0 (2026-10-05) and jsdom 30.1.2 (2026-10-04) are newer but under two weeks
+old. No `@types/jsdom`: it pulls the DOM lib into the whole program, which `tsconfig.json:11` keeps out; the test
+declares the three jsdom members it uses.
+
+## 5. Tests — RED first, then green, then break-its
+
+### 5.1 The gallery and the fakes
+
+- `src/test/gallery/` (cases, §4.9) — test code, never shipped.
+- `src/test/fakeDom.ts` — the STRICT fake document: `createElement` only for `KitTag`; `setAttribute` only for
+  §4.3's attributes; every element a proxy that throws on any member it does not model (`innerHTML`, `style`,
+  `outerHTML`, …); `textContent` takes strings only; events bubble element → ancestors; `focus()` tracked as the
+  document's active element; `appendChild` moves an attached child. Its own contract tests,
+  `src/test/fakeDom.test.ts` (`common.generated-code-tests` §3: a fake is code under test, stricter than the real
+  thing and never more permissive).
+- **Every behaviour test runs twice — on the strict fake and on jsdom** — so a behaviour that only the fake
+  allows, or only the fake refuses, is visible as a difference rather than hidden by one of them.
+
+### 5.2 RED list (each written first and watched failing for the real reason)
+
+Tabs (`src/test/tabs.test.ts`):
+1. the tablist / tab / tabpanel roles, `aria-controls` ↔ panel `id`, `aria-labelledby` ↔ tab `id`, exactly one
+   `aria-selected="true"`, its panel the only one not hidden;
+2. roving tabindex: `0` on the selected tab only;
+3. ArrowRight from the last wraps to the first, ArrowLeft from the first to the last, Home / End, each focusing
+   the new tab and calling `preventDefault`; a letter key changes nothing;
+4. a click selects and calls `onSelect(id)` once; `select(id)` from code does not call it;
+5. every tone shows its glyph AND its word; `setStatus` replaces and removes a mark live;
+6. the refusals of §4.5, each naming what.
+
+DataTable (`src/test/dataTable.test.ts`):
+7. headers: a sortable column is `th[scope=col][aria-sort=none]` holding a `button[type=button]`; a non-sortable
+   one has neither;
+8. click → ascending, again → descending; `aria-sort` follows and is `none` on every other sortable column;
+9. numbers sort numerically (`9` before `10`), `null` last in BOTH directions and shown as `—`, ties keep the
+   original order; mixed numbers and strings: numbers first;
+10. `format` shapes the cell (`14680064` → the consumer's `14.0 MiB`) and is never called with `null`;
+11. search: case-insensitive over the SHOWN text, the status line counts, no hit shows `emptyText` once;
+12. reveal: before any reveal no row's DOM text holds the hidden value (a fixture row carries it in a field no
+    column reads); a click calls `onReveal` with exactly one argument, the index in the given `rows` — also after a
+    descending sort and a search moved the row; `reveal(index, text)` fills only that row; `setRows` drops it;
+13. the refusals of §4.6.
+
+RecommendationCard (`src/test/recommendationCard.test.ts`):
+14. glyph `aria-hidden`, word, sentence, the consumer's button placed as given, evidence as a list;
+15. an action that is not a `BUTTON`, an unknown tone, an empty word, sentence or evidence entry are refused.
+
+The surface, the stylesheet, the package (`src/test/componentsCss.test.ts`, `contrast.test.ts`, `axe.test.ts`,
+`stories.test.ts`, and widened `architecture.test.ts`, `exports.test.ts`, `packaging.test.ts`):
+16. every class any gallery case renders has a rule in `components.css` (derived from the rendered DOM, not
+    listed), and the companion: the scan finds a known class;
+17. `components.css` has no `url(`, `@import`, `!important` or `expression`, and every `--kit-*` token resolves
+    to a `var(--vscode-…)`;
+18. contrast (§5.4) for every theme fixture;
+19. axe: zero violations over every gallery case; the companion broken case IS reported;
+20. the CSF exports equal the gallery cases, both ways; the extractor's companion finds a known story;
+21. the components entry's import closure reaches no host module and nothing outside `src/components/`; the root
+    entry's still reaches `nonce.ts` (the known instance);
+22. the components entry exports exactly its pinned list; the root list is unchanged;
+23. the tarball carries `dist/components/index.js`, `index.d.ts`, `components.css`; no `stories/`, `.storybook/`,
+    `gallery` or `storybook-static` path; `exports` names both subpaths; `sideEffects` admits `*.css`.
+
+The consumer fixture (`test/consumer-fixture/`, run by `pack-and-consume`, §6):
+24. a webview entry `src/webview.ts` importing `…/components` and `…/components.css` type-checks against the
+    INSTALLED `.d.ts` with `lib: DOM` (a real `document` passed, no cast) and bundles for `platform: 'browser'`,
+    `format: 'iife'`; the CSS output exists and carries the token block — and with `sideEffects: false` restored
+    it does not (the break-it that proves the step watches the CSS).
+
+### 5.3 Break-its after green (each restored and checked by SHA-256)
+
+The guarding test must go red, with the real symptom, for each of: a tab whose `aria-selected` is not updated;
+the roving tabindex left at `0` everywhere; ArrowLeft not wrapping; `null` sorted first when descending; the
+reveal callback handed the DISPLAY position instead of the row index; the revealed text written into every row;
+`setRows` keeping revealed texts; a component class with no CSS rule; the ok tone mapped to
+`testing-iconPassed` (Light Modern `#73C991` on white); the warning tone without its `editorWarning-foreground`
+fallback (high contrast has no `list-warningForeground`); the components entry importing `../webview/nonce`;
+`sideEffects: false`; a CSF story removed. Never a tripwire disabled or weakened to make a break-it work.
+
+### 5.4 Contrast (`src/test/contrast.test.ts`)
+
+`.storybook/vscode-themes.css` carries, per theme (Dark Modern, Light Modern, Dark High Contrast, Light High
+Contrast), the `--vscode-*` values the tokens read — resolved from `microsoft/vscode` @
+`ac0e053d86439bc74274c21f68a88f78e4956271` (`extensions/theme-defaults/themes/*.json` along their `include`
+chains, then the colour registry's defaults for the theme type, as `colorThemeData.ts:152-170` resolves them),
+each line citing its source, and a variable VS Code leaves UNSET (`themeing.ts:64-68` skips an undefined colour)
+absent from the fixture, so a `var()` fallback is exercised exactly where a real webview would need it. Values
+VS Code emits with alpha are kept as the `rgba()` it emits and composited over the editor background in the test,
+as a browser paints them. The test parses the token block out of `components.css`, resolves every token per
+theme through its `var()` fallbacks, derives the pairs by the naming convention of §4.8, and computes the WCAG
+2.x ratio: text ≥ 4.5, non-text ≥ 3. A token that resolves to nothing in some theme is a failure, never a skip.
+What it proves is the mapping under THESE values; a user's own theme is theirs (§8).
+
+## 6. Build order
+
+1. **This plan** (commit 1), `todo/README.md`'s row, and the boundary written into
+   [PLAN_extract_the_kit.md](PLAN_extract_the_kit.md) (§2's table and the release decision, §7).
+2. The gate's plan round (`review_plan`) until `proceed`.
+3. Dependencies (`npm install --save-dev --save-exact`), `npm audit`, licences recorded (§4.11).
+4. `src/components/dom.ts` + `src/test/fakeDom.ts` + its contract tests (RED → green).
+5. `status.ts`, then `tabs.ts`, `dataTable.ts` (+ a pure `tableOrder.ts` for sort and filter),
+   `recommendationCard.ts` — each with its RED list first; jsdom twin of every behaviour test.
+6. `components.css` + `componentsCss.test.ts`; `src/components/index.ts`; `exports` / `sideEffects` /
+   `scripts/copy-css.mjs`; architecture, exports and packaging tests.
+7. The gallery, `.storybook/`, `stories/*.stories.ts`, `stories.test.ts`; `axe.test.ts`; theme fixtures and
+   `contrast.test.ts`; `npm run build-storybook` green.
+8. The consumer fixture's webview entry and `pack-and-consume`'s browser bundle + CSS check.
+9. CI: a `storybook` job (ubuntu-latest: `npm ci`, `npm run build-storybook`); `tsconfig.storybook.json`
+   type-checked by `npm run typecheck`; eslint ignores `storybook-static/`.
+10. Docs: `research/architecture.md` (module map, a components section with a Mermaid diagram, the package
+    surface), `research/module_tests.md` (the flows, the fakes, what is not proven), README (consumer usage).
+11. Break-its (§5.3), full suites and family checks, commit, the gate's code round, the PR, CodeRabbit,
+    squash-merge (with the release footer of §7 when it applies), and this plan promoted to `research/` in the
+    same pull request once the code round has passed.
+
+## 7. Release: why the first published version is 0.2.0 — decided
+
+As of 2026-10-12: npmjs answers 404 for the package; `.release-please-manifest.json` is `{}` with
+`initial-version: 0.1.0` (`release-please-config.json`); there are no GitHub releases, no Actions secrets and no
+`npm` environment — the owner's one-time setup (README "What the owner creates once") is not done. The epic wants
+wsl_care to pin 0.2.0 = the 0.1.0 modules + K1.
+
+- **If 0.1.0 has been released by the time K1 merges** (the owner's setup landed and release-please's 0.1.0
+  pull request merged first): K1 is a plain `feat:` and release-please proposes 0.2.0 by itself.
+- **Otherwise — the expected case:** K1's squash-merge commit body carries the footer `Release-As: 0.2.0`. The
+  first release-please pull request then proposes 0.2.0 holding everything, and **0.1.0 is never published
+  separately**; both kit plans record that. Checked, not recalled: release-please 17.11.2 (npm),
+  `build/src/strategies/base.js:325-340` — `buildNewVersion` takes a commit's `RELEASE AS` note BEFORE it looks
+  for a latest release or falls back to `initial-version`; `build/src/commit.js:221-231` turns the `Release-As:`
+  footer into that note. The action's own bundle (v5.0.0) was not re-read for this.
+- `src/test/releaseConfig.test.ts` stays green either way: until release-please's pull request, the manifest is
+  `{}` and `package.json` still says 0.1.0 = `initial-version`; from that pull request on, the manifest and
+  `package.json` both say 0.2.0 and `CHANGELOG.md` carries its section.
+- Nothing here runs a release, publishes, creates a tag or touches a secret.
+
+## 8. What this does NOT prove (carried into `research/module_tests.md`)
+
+- That a browser turns Enter / Space on a `<button>` into a click: the platform's contract, used in the
+  Storybook by hand, not run in CI.
+- Colour contrast in a real rendering: jsdom has no layout; the contrast check covers the token mapping under
+  representative theme values, and a user's own theme can still choose poor colours.
+- That wsl_care's harness accepts the surface: its W0 widens it per §4.3, with its own RED tests.
+- Screen-reader output: axe checks roles, names and ARIA validity, not what a reader announces.
+
+## 9. Growth surfaces
+
+None persistent. A `DataTable` holds the rows it was given and, at most, one revealed text per row, dropped on
+`setRows`; a `Tabs` holds its tabs. `storybook-static/` is a build output, git-ignored and rebuilt from scratch by
+`storybook build`. CI gains one job (the Storybook build) on ubuntu.
+
+## 10. Definition of Done
+
+- [ ] The three components, the status tones and the stylesheet exist with the API of §4; nothing in them uses
+      `innerHTML`, `style` or an inline handler; no domain word.
+- [ ] `./components` and `./components.css` resolve from the PACKED tarball: the consumer fixture's webview entry
+      type-checks with a real `document` and bundles for the browser with its CSS.
+- [ ] Every RED test of §5.2 was seen failing for the real reason, then green; every break-it of §5.3 turned the
+      right test red; the whole suite green on both CI legs.
+- [ ] Storybook builds; every component × state × theme × size is in it; axe zero violations over every gallery
+      case in CI; contrast checked.
+- [ ] `dependencies` absent; `npm pack --dry-run` lists `dist/` and the bin only; no Storybook file ships.
+- [ ] `research/architecture.md`, `research/module_tests.md` and README describe what shipped.
+- [ ] The release decision of §7 applied at the merge and recorded in both kit plans.
+- [ ] The gate's plan and code rounds reached `proceed`; CodeRabbit's threads answered and resolved; merged.
+- [ ] This plan promoted to `research/` with `IMPLEMENTED <date>` and its deviations.

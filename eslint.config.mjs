@@ -14,7 +14,7 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['out/**', 'dist/**', 'node_modules/**', '.agents/**'],
+    ignores: ['out/**', 'dist/**', 'node_modules/**', '.agents/**', '.claude/hooks/**'],
   },
   {
     // A disable that has stopped being needed is an exemption nobody granted.

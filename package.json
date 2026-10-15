@@ -40,14 +40,16 @@
     "node": ">=20"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.storybook.json",
     "compile": "node scripts/clean.mjs out && tsc -p tsconfig.json",
     "test": "npm run compile && node scripts/run-tests.mjs",
     "build": "node scripts/clean.mjs dist && tsc -p tsconfig.build.json && node scripts/copy-css.mjs",
     "prepack": "npm run build",
     "pack-and-consume": "node scripts/pack-and-consume.mjs",
     "lint": "eslint .",
-    "prepublishOnly": "npm run build && npm test"
+    "prepublishOnly": "npm run build && npm test",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build -o storybook-static"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

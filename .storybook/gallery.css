@@ -1,0 +1,58 @@
+/* The Storybook's own frame around the kit: text sizes, the matrix grid, and the gallery's sample elements. Never
+   shipped; the kit's components are styled by src/components/components.css alone. */
+
+.kit-story-size-small {
+  --vscode-font-size: 11px;
+  font-size: 11px;
+}
+
+.kit-story-size-default {
+  --vscode-font-size: 13px;
+  font-size: 13px;
+}
+
+.kit-story-size-large {
+  --vscode-font-size: 18px;
+  font-size: 18px;
+}
+
+body {
+  font-family: var(--vscode-font-family, sans-serif);
+  margin: 0;
+  padding: 12px;
+}
+
+.gallery-matrix {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.gallery-frame {
+  padding: 8px;
+  border: 1px solid var(--vscode-panel-border, #888888);
+}
+
+.gallery-frame__label {
+  margin: 0 0 6px;
+  font-size: 0.85em;
+  opacity: 0.8;
+}
+
+.gallery-panel {
+  margin: 0;
+}
+
+.gallery-help {
+  width: 100%;
+  min-height: 420px;
+  border: 0;
+}
+
+.gallery-action {
+  padding: 0.3em 0.8em;
+  border: 1px solid var(--vscode-button-border, transparent);
+  background: var(--vscode-button-background, #0078d4);
+  color: var(--vscode-button-foreground, #ffffff);
+  font: inherit;
+}

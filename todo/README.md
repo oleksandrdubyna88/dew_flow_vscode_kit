@@ -8,4 +8,4 @@ Plans for work that is not finished. A finished plan moves to `research/` with s
 |---|---|---|
 | [PLAN_extract_the_kit.md](PLAN_extract_the_kit.md) | in progress (2026-10-17): 0.1.1 published to GitHub Packages; DoD A boxes, promotion and consumer switches open | the first release: help, display, settings and webview modules extracted from ConnectOtherAIs |
 | [PLAN_split_the_publish_job.md](PLAN_split_the_publish_job.md) | in progress (2026-10-17): built; open: code round, merge, first real release run | release.yml: build and test unprivileged, attest and publish the artifact in a job that runs no dependency code |
-| [PLAN_kit_components_storybook.md](PLAN_kit_components_storybook.md) | plan only (2026-10-12) | kit 0.2.0 (wsl_care E18.K1): Tabs, DataTable, RecommendationCard, theme tokens, Storybook, axe and contrast checks |
+| [PLAN_kit_components_storybook.md](PLAN_kit_components_storybook.md) | in progress (2026-10-12): built on its branch; code round and merge open | kit 0.2.0 (wsl_care E18.K1): Tabs, DataTable, RecommendationCard, theme tokens, Storybook, axe and contrast checks |

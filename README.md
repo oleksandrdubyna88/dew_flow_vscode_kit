@@ -10,6 +10,7 @@ VS Code extensions.
 | `settings` | one reporter for "a view setting could not be saved" |
 | `webview` | `escapeHtml`, `jsonForScript`, a nonce, and the ordered write queue |
 | `text` | `asText` — text, whatever the caller actually had |
+| `components` (subpath `…/components`) | webview components built with the DOM (no `innerHTML`, no `style`): `Tabs` with a status per tab, a `DataTable` you sort, search and reveal a hidden value in, a `RecommendationCard`; their stylesheet `…/components.css` with theme tokens on VS Code's `--vscode-*` variables; a Storybook of every state |
 | bin `vscode-webview-kit-help-digests` | prints the `from` line each stale or unchecked translation needs |
 
 Extracted from ConnectOtherAIs on 2026-10-02; consumers: ConnectOtherAIs, wsl_care.
@@ -18,6 +19,7 @@ Extracted from ConnectOtherAIs on 2026-10-02; consumers: ConnectOtherAIs, wsl_ca
 reached a registry**: its release run failed at `npm publish` on npmjs (E403, run 38925094342), so the tag
 `v0.1.0` stays, unpublished. The next release, **0.1.1**, is the first publish — to GitHub Packages, with an
 artifact attestation ([research/PLAN_publish_to_github_packages.md](research/PLAN_publish_to_github_packages.md)).
+The components (`…/components`, in 0.2.0) are in [todo/PLAN_kit_components_storybook.md](todo/PLAN_kit_components_storybook.md).
 
 ## Use
 
@@ -248,6 +250,83 @@ import { nonce, renderHelpPage } from '@oleksandrdubyna88/vscode-webview-kit';
 
 const html = renderHelpPage({ catalog, language: 'ru', display: display.config, nonce: nonce(), ...display.current() });
 ```
+
+### Webview components: Tabs, DataTable, RecommendationCard
+
+These run INSIDE the webview, so they live behind their own entry, `…/components` — the package root re-exports the
+host's nonce, which imports `node:crypto`, and must never be bundled for a browser. Bundle a webview entry of your
+own with esbuild for the browser and import the stylesheet beside it:
+
+```ts
+// src/webview/fullView.ts → esbuild { bundle: true, platform: 'browser', format: 'iife' } → media/full.js + media/full.css
+import { createDataTable, createRecommendationCard, createTabs } from '@oleksandrdubyna88/vscode-webview-kit/components';
+import '@oleksandrdubyna88/vscode-webview-kit/components.css';
+```
+
+TypeScript 6 checks side-effect imports, so declare stylesheets once (`declare module '*.css';` in a `.d.ts`), and
+type-check the webview entry with `lib: ["ES2022", "DOM"]`. The page links the emitted CSS under its nonce —
+`<link rel="stylesheet" nonce="…" href="<webview URI of media/full.css>">` — and needs nothing more: the components
+set no `style` attribute and use no `innerHTML`, so a CSP of `default-src 'none'; script-src 'nonce-…'; style-src
+'nonce-…'` holds. The file inside the package is `dist/components/components.css`, if you would rather copy it.
+
+Every component takes the document as its first argument — the real `document` here, with no cast; what it returns is
+your page's own `HTMLElement`:
+
+```ts
+const table = createDataTable(document, {
+  label: 'Processes',
+  columns: [
+    { key: 'pid', header: 'PID', value: (row) => row.pid, align: 'end' },
+    { key: 'held', header: 'Held', value: (row) => row.heldBytes, format: (bytes) => mib(Number(bytes)), align: 'end' },
+    { key: 'program', header: 'Program', value: (row) => row.program },
+  ],
+  rows,
+  search: { label: 'Search processes' },
+  reveal: {
+    header: 'Command line',
+    button: (row) => `Show the command line of ${row.program}`,
+    onReveal: (index) => vscode.postMessage({ type: 'reveal', index }),   // the kit tells you an index, nothing else
+  },
+});
+// when the host answers: table.reveal(index, commandLine); a fresh poll: table.setRows(rows) (revealed values drop)
+
+const card = createRecommendationCard(document, {
+  tone: 'warning', word: 'Warning', sentence: 'Memory is low. Drop caches to free about 2.1 GiB.',
+  action: myDropCachesButton,              // ONE button you built and wired; the kit only places it
+  evidence: ['RAM available 6 %', 'Swap 92 % used'],
+});
+
+const tabs = createTabs(document, {
+  idPrefix: 'full', label: 'Sides',
+  tabs: [
+    { id: 'linux', label: 'Linux', content: table.root, status: { tone: 'warning', word: '2 warnings' } },
+    { id: 'advice', label: 'Advice', content: card },
+  ],
+  onSelect: (id) => vscode.setState({ tab: id }),
+});
+document.getElementById('full')?.appendChild(tabs.root);
+tabs.setStatus('linux', { tone: 'ok', word: 'All fine' });   // live, as data arrives
+```
+
+- **Every word and every unit is yours.** A column's `value` sorts (a number, a string, or `null` for absent) and its
+  `format` shows; the kit formats nothing but absence, which it shows as `—` and sorts last both ways. A status is a
+  tone (`neutral`, `info`, `ok`, `warning`, `critical`) AND its word — colour is never the only signal.
+- **Sorting** is a `button` in each sortable `th`, so a click, Enter and Space all sort; `aria-sort` follows.
+  **Tabs** are the WAI-ARIA pattern: arrow keys (wrapping), Home and End, a roving `tabindex`; `onSelect` hears a
+  person's choice, never `select()` from code.
+- **The reveal never puts a hidden value in the page before you hand it over**, and `onReveal` receives the row's
+  index in the `rows` you gave — not its place after a sort or a search.
+- **What your page harness must allow** (a strict one refuses whatever it does not model): the tags `div span strong
+  p ul li button input table thead tbody tr th td`; the attributes `role id type tabindex scope colspan aria-*
+  data-kit-*`; `className`, `textContent`, `hidden`, `focus()`, an input's `value`; the events `click`, `keydown`,
+  `input`. That is the whole surface (`src/components/dom.ts`).
+- **Theme tokens** are `--kit-*` custom properties declared on each component's root and mapped onto `--vscode-*`
+  variables, so light, dark and high-contrast themes are VS Code's to set; every size is in `em`, so the ± text size
+  scales them.
+
+**The Storybook** shows every component and state, and the existing display controls and Help viewer, under VS Code's
+four reference themes and three text sizes, with axe's panel: `npm run storybook` (or `npm run build-storybook` for
+`storybook-static/`). It is a development tool; nothing of it ships.
 
 ## Develop
 

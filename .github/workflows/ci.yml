@@ -81,3 +81,30 @@ jobs:
     permissions:
       contents: read
     uses: ./.github/workflows/pack-and-consume.yml
+
+  # The Storybook builds (E18.K1, todo/PLAN_kit_components_storybook.md §4.9): every story compiles and is indexed.
+  # Ubuntu only, and that is the whole mapping (common.platform-limits § 2): the Storybook is a development page, no
+  # binary of it ships to any platform, and the code it shows — the components — runs its tests, axe and contrast
+  # checks on BOTH legs of build-test above.
+  storybook:
+    name: storybook build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: LF on every platform
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build the Storybook
+        run: npm run build-storybook

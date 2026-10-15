@@ -18,5 +18,7 @@
     "skipLibCheck": false,
     "noEmit": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  // The webview entry needs the DOM library; it is checked by tsconfig.webview.json, under the same strict set.
+  "exclude": ["src/webview.ts"]
 }

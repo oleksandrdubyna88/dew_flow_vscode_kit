@@ -1,6 +1,6 @@
 # PLAN — kit 0.2.0: Tabs, DataTable, RecommendationCard, theme tokens, and a Storybook
 
-> Status: **plan only, nothing implemented yet, 2026-10-12.** Scope: a new `src/components/` module with its
+> Status: **in progress, 2026-10-12** — the plan round reached `proceed`; the components, the stylesheet, the Storybook, the axe and contrast checks and the consumer fixture's webview entry are built on `feat/kit-k1-components`; the code round, the pull request and the merge are open. **Amended 2026-10-15** with §4.6a (the owner's review of the E18 mockup: no table ever scrolls sideways), its RED items 25–28 and build step 8a; that part is not built yet. Scope: a new `src/components/` module with its
 > own package entry (`./components`) and stylesheet (`./components.css`), a Storybook (devDependencies only),
 > axe and contrast checks in CI, and the docs. This is story **E18.K1** of wsl_care's epic E18
 > (`wsl_care · todo/PLAN_disk_health.md` §3.4 and its E18 table, issue oleksandrdubyna88/wsl_care#87),
@@ -64,8 +64,9 @@ Two consequences for wsl_care's W0 that this plan makes explicit rather than lea
   `nonce` (`src/index.ts:79`) — and `src/webview/nonce.ts` imports `node:crypto`. A webview bundle that imported
   the root entry would pull `node:crypto` into a browser build (esbuild refuses to resolve it for
   `platform: 'browser'`). Hence a second entry (§4.2).
-- `package.json` has `"sideEffects": false` (`:27`): esbuild drops a bare `import '…/components.css'` from a
-  package marked side-effect-free, so the CSS would silently vanish from the consumer's bundle. §4.2 changes it.
+- `package.json` has `"sideEffects": false` (`:27`), which is untrue of a stylesheet: a bundler that honours the
+  field for CSS drops a bare `import '…/components.css'`. §4.2 changes it. *(As built: the premise that ESBUILD drops
+  it was refuted by the break-it — esbuild 0.28.2 emitted the CSS with `sideEffects: false` restored; see §11.)*
 - `tsconfig.json:11` is `lib: ["ES2022"]` on purpose (no DOM globals in pure modules). The components therefore
   take the document as a PORT (§4.3) — which is also what makes them testable without a global `document`.
 - `tsconfig.build.json:10` excludes `src/test` from `dist/`; the gallery (§5.1) lives under `src/test/` so it
@@ -104,12 +105,11 @@ are not needed here; `src/test/scriptInterpolation.test.ts` keeps scanning every
 | `…/components.css` | `dist/components/components.css` | the theme tokens and every component rule |
 
 - `exports` gains `"./components"` (`types` / `require` / `default`) and `"./components.css"`.
-- `sideEffects` becomes `["*.css"]`, so a bare CSS import survives tree-shaking while every JS module stays
-  side-effect-free.
+- `sideEffects` becomes `["*.css"]` — the stylesheet is a side effect, every JS module stays side-effect-free.
 - `npm run build` copies `src/components/components.css` into `dist/components/` after `tsc`
   (`scripts/copy-css.mjs`, deleting nothing outside `dist/`).
-- The components entry imports nothing outside `src/components/` — its closure is the four component files,
-  `dom.ts` and `status.ts`; the architecture test holds it (§5.2, item 21).
+- The components entry imports nothing outside `src/components/` — its closure is the component files and their
+  helpers (`dom.ts`, `checks.ts`, `status.ts`, `tableOrder.ts`); the architecture test holds it (§5.2, item 21).
 
 A consumer (wsl_care's `src/webview/fullView.ts → media/full.js` + `media/full.css`):
 
@@ -117,6 +117,12 @@ A consumer (wsl_care's `src/webview/fullView.ts → media/full.js` + `media/full
 import { createDataTable, createTabs, createRecommendationCard } from '@oleksandrdubyna88/vscode-webview-kit/components';
 import '@oleksandrdubyna88/vscode-webview-kit/components.css'; // esbuild emits it beside the JS as full.css
 ```
+
+**How the emitted stylesheet gets past the CSP** (gate, plan round, finding 0): the consumer's shell links it
+with the render's nonce — `<link rel="stylesheet" nonce="…" href="<webview URI of full.css>">` — exactly as
+wsl_care's shell already links `media/panel.css` (`wsl_care · src_vs_code/src/panel/panelHtml.ts:61`). The kit's
+stylesheet asks for nothing more than that nonce: no inline `style`, no `url()`, no `@import` (held by §5.2 item
+17). README "Use" shows the link. That a browser then honours the nonce is the browser's, and is listed in §8.
 
 ### 4.3 The DOM port — what the components touch, and nothing else
 
@@ -149,7 +155,7 @@ a cast to a DOM type.
 |---|---|
 | tags (`KitTag`) | `div`, `span`, `strong`, `p`, `ul`, `li`, `button`, `input`, `table`, `thead`, `tbody`, `tr`, `th`, `td` |
 | attributes (`setAttribute`) | `role`, `id`, `type`, `tabindex`, `scope`, `colspan`, `aria-selected`, `aria-controls`, `aria-labelledby`, `aria-label`, `aria-sort`, `aria-hidden`, `data-kit-*` — never `style`, `on*`, `src`, `href` |
-| members | `className`, `textContent` (strings only), `hidden`, `focus()`, an input's `value` (read) |
+| members | `className`, `textContent` (strings only), `hidden`, `focus()`, an input's `value` (read, and written by `filter()` so the box shows the query) |
 | events | `click` (tabs, sort and reveal buttons), `keydown` (the tablist: arrows, Home, End), `input` (the search box) |
 
 ### 4.4 The status tones
@@ -224,6 +230,39 @@ createDataTable(doc, {
 - Refused with a `TypeError`: no columns, a repeated or malformed key, an empty header or label, a
   `sort.key` that is not a sortable column, `reveal(index, …)` outside the rows or without a reveal column, a
   non-string revealed text.
+
+### 4.6a `DataTable` fits its box — never a horizontal scroll (the owner, 2026-10-15)
+
+The owner approved the E18 mockup (`D:\rsd\_wt\e18-mockup`, outside every repository) with three changes; one of them
+is the kit's: **no table scrolls sideways, small ones above all** — columns shrink and wrap, headers are short, and
+where that is not enough a row breaks onto several lines; a scroll bar is never the answer. (The other two — cards in
+one row of one height, and a distro picker on wsl_care's WSL tab — are the consumer's layout, E18.W1.)
+
+- **The table is never a scroll container and never wider than its box.** `.kit-table` is a CSS size container
+  (`container: kit-table / inline-size`), so what follows reads the TABLE's own width, not the window's: a table in a
+  narrow card adapts at 1920 px too. `.kit-table__grid` is `width: 100%`; a cell breaks a word only as a last resort
+  (`overflow-wrap: anywhere`); a header breaks only between words (`overflow-wrap: break-word` — never "Ru|ns");
+  an `align: 'end'` cell stays on one line only while the table is wider than `30em`.
+- **Stacked rows below a width.** `createDataTable(doc, { …, stack: 'narrow' | 'medium' | 'wide' | 'never' })` —
+  default `'medium'` — adds `kit-table--stack-<value>`; below `30em` / `40em` / `60em` of the table's own width each
+  row shows as "label: value" lines: every body cell carries `data-kit-label` = its column's header (set with
+  `setAttribute`, `data-kit-*` is already in §4.3's set) and the stylesheet draws it with
+  `td[data-kit-label]::before { content: attr(data-kit-label) ': ' }`. The header row becomes a wrapped row of the
+  sortable headers' buttons after the words `Sort by` (a CSS `::before`, so it is not in the accessible name), so
+  click / Enter / Space sorting keeps working; a non-sortable header is hidden there, because its cells carry its name.
+  The reveal cell and the empty-result row stack like any other cell; the empty row shows no label.
+- **Why not "fewer columns".** Hiding a column hides data the consumer chose to show; stacking keeps every value and
+  still never scrolls. A consumer who wants fewer columns passes fewer columns.
+- **Proved in a real browser, not asserted** — jsdom has no layout (§4.10). `scripts/layout-check.mjs` (no
+  dependency: Node's own `WebSocket` drives Chrome over the DevTools protocol, the viewport set by
+  `Emulation.setDeviceMetricsOverride`, so 300 px is laid out at 300 px rather than cropped) renders every gallery
+  case into one static page with `components.css` and the theme fixtures, at **300 / 1280 / 1920 px × the four themes
+  × three sizes**, each case also inside a deliberately narrow (`18em`) box, and fails on: a page wider than the
+  viewport; any element whose content is wider than its box (`scrollWidth > clientWidth`, which is what a scroll bar
+  or spilled text is); a table wider than its parent; a cell whose content spills out of it. Chrome is found from
+  `CHROME_PATH`, then the platform's usual install paths; none found is a RED run that says so, never a skip. CI runs
+  it on ubuntu (Google Chrome is on GitHub's image) in the `storybook` job. Its profile lives in a git-ignored
+  `testsToDelete-layout-check/` that the script removes in a `finally`.
 
 ### 4.7 `RecommendationCard`
 
@@ -397,6 +436,19 @@ The consumer fixture (`test/consumer-fixture/`, run by `pack-and-consume`, §6):
     `format: 'iife'`; the CSS output exists and carries the token block — and with `sideEffects: false` restored
     it does not (the break-it that proves the step watches the CSS).
 
+Fit, never scroll (§4.6a — `src/test/dataTable.test.ts`, `componentsCss.test.ts`, `scripts/layout-check.mjs`):
+25. every body cell's `data-kit-label` equals its column's header, after `setRows`, a sort and a search; the empty row
+    has none; `stack` defaults to `medium`, each value adds its class, an unknown value is refused naming the four;
+26. `components.css` declares `.kit-table` a size container, has a `@container` rule per stack width, draws
+    `attr(data-kit-label)`, and gives no table, wrapper or cell an `overflow-x` of `auto` / `scroll` and no
+    `min-width` in a length unit;
+27. the layout check is green over every gallery case × 300 / 1280 / 1920 px × four themes × three sizes, plus the
+    narrow box — and the gallery gains the cases that would break it: eight columns in an `18em` box, an unbreakable
+    word (a long path) in a cell, a long header;
+28. the layout check's companion: a planted `min-width: 40em` on `.kit-table__grid` and a planted `white-space: nowrap`
+    on every cell each turn it RED with the offending case named (run from a temporary copy of the stylesheet; the
+    real file is never edited, and its SHA-256 is compared after).
+
 ### 5.3 Break-its after green (each restored and checked by SHA-256)
 
 The guarding test must go red, with the real symptom, for each of: a tab whose `aria-selected` is not updated;
@@ -421,6 +473,14 @@ theme through its `var()` fallbacks, derives the pairs by the naming convention 
 2.x ratio: text ≥ 4.5, non-text ≥ 3. A token that resolves to nothing in some theme is a failure, never a skip.
 What it proves is the mapping under THESE values; a user's own theme is theirs (§8).
 
+### 5.5 The gate's plan round (session `a184ab9f`, 2026-10-12)
+
+One reviewer (codex) of one answered; verdict `proceed`, gating count 1 of threshold 6.
+
+| # | Finding | Decision |
+|---|---|---|
+| 0 | §4.8 does not say how the emitted stylesheet is authorised by the webview's nonce-only CSP | **Accepted in part.** §4.2 names the loading path (a `<link nonce>`, as wsl_care's shell already does) and §5.2 item 17 holds that the stylesheet needs nothing beyond the nonce; that a browser honours it is listed in §8 — the fixture runs under node and cannot observe a CSP. |
+
 ## 6. Build order
 
 1. **This plan** (commit 1), `todo/README.md`'s row, and the boundary written into
@@ -435,6 +495,8 @@ What it proves is the mapping under THESE values; a user's own theme is theirs (
 7. The gallery, `.storybook/`, `stories/*.stories.ts`, `stories.test.ts`; `axe.test.ts`; theme fixtures and
    `contrast.test.ts`; `npm run build-storybook` green.
 8. The consumer fixture's webview entry and `pack-and-consume`'s browser bundle + CSS check.
+8a. §4.6a (added 2026-10-15, after the owner's review of the mockup): RED items 25–28 first, then `stack`,
+    `data-kit-label`, the container rules, `scripts/layout-check.mjs` and its CI step.
 9. CI: a `storybook` job (ubuntu-latest: `npm ci`, `npm run build-storybook`); `tsconfig.storybook.json`
    type-checked by `npm run typecheck`; eslint ignores `storybook-static/`.
 10. Docs: `research/architecture.md` (module map, a components section with a Mermaid diagram, the package
@@ -470,6 +532,8 @@ wsl_care to pin 0.2.0 = the 0.1.0 modules + K1.
 - Colour contrast in a real rendering: jsdom has no layout; the contrast check covers the token mapping under
   representative theme values, and a user's own theme can still choose poor colours.
 - That wsl_care's harness accepts the surface: its W0 widens it per §4.3, with its own RED tests.
+- That a webview loads the emitted stylesheet under its nonce-only CSP: the consumer's shell and a real browser;
+  the kit proves only that the stylesheet needs nothing beyond the nonce (§4.2).
 - Screen-reader output: axe checks roles, names and ARIA validity, not what a reader announces.
 
 ## 9. Growth surfaces
@@ -488,6 +552,8 @@ None persistent. A `DataTable` holds the rows it was given and, at most, one rev
       right test red; the whole suite green on both CI legs.
 - [ ] Storybook builds; every component × state × theme × size is in it; axe zero violations over every gallery
       case in CI; contrast checked.
+- [ ] No table scrolls sideways (§4.6a): the layout check is green in CI over every case × width × theme × size,
+      and its companion turns red on a planted `min-width`.
 - [ ] `dependencies` absent; `npm pack --dry-run` lists `dist/` and the bin only; no Storybook file ships.
 - [ ] `research/architecture.md`, `research/module_tests.md` and README describe what shipped.
 - [ ] The release decision of §7 applied at the merge and recorded in both kit plans.

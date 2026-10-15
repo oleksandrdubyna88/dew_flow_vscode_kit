@@ -1,0 +1,15 @@
+{
+  // The Storybook's own code — `.storybook/` and `stories/` — type-checked by `npm run typecheck` beside the main
+  // program. A SEPARATE program because it runs in a browser and needs the DOM library, which `tsconfig.json` keeps
+  // out of the kit on purpose. It reaches into `src/` (the gallery and the components) through imports; those files are
+  // checked under the main program's rules as well. Nothing here is emitted: Storybook's own Vite build compiles it.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "noEmit": true
+  },
+  "include": ["stories", ".storybook"],
+  "exclude": ["node_modules", "out", "dist", "storybook-static"]
+}

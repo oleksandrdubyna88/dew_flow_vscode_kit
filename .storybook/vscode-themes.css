@@ -1,0 +1,127 @@
+/*
+ * The --vscode-* values the kit's theme tokens read, for VS Code's four built-in reference themes — what a webview
+ * receives in each (todo/PLAN_kit_components_storybook.md §5.4). Used twice: the Storybook paints its stories with
+ * them, and src/test/contrast.test.ts computes the tokens' contrast from them.
+ *
+ * RESOLVED, NOT RECALLED, from microsoft/vscode @ ac0e053d86439bc74274c21f68a88f78e4956271, as VS Code resolves a
+ * colour (src/vs/workbench/services/themes/common/colorThemeData.ts:152-170): the theme JSON along its `include`
+ * chain (extensions/theme-defaults/themes/, the including theme wins), otherwise the colour registry's default for
+ * the theme type (src/vs/platform/theme/common/colors/*.ts, src/vs/workbench/common/theme.ts). A colour that
+ * resolves to nothing is NOT EMITTED (src/vs/workbench/contrib/webview/browser/themeing.ts:64-68), so it is absent
+ * here too — which is what exercises a token's var() fallback exactly where a real webview needs one. A colour with
+ * alpha is written as the rgba() VS Code emits (base/common/color.ts Color.toString); the test composites it over the
+ * editor background, as a browser paints it. The body class per kind is themeing.ts:107-111.
+ *
+ * Short names below: colors/ = src/vs/platform/theme/common/colors/; theme.ts = src/vs/workbench/common/theme.ts;
+ * testing = src/vs/workbench/contrib/testing/browser/theme.ts. Not modelled: a user's colorCustomizations, themes
+ * from other extensions.
+ */
+
+/* Dark Modern (type vs-dark; extensions/theme-defaults/package.json:37) */
+.vscode-dark {
+  --vscode-foreground: #cccccc; /* dark_modern.json:49 */
+  --vscode-descriptionForeground: #9d9d9d; /* dark_modern.json:28 */
+  --vscode-editor-background: #1f1f1f; /* dark_modern.json:33 */
+  --vscode-editor-foreground: #cccccc; /* dark_modern.json:35 */
+  --vscode-panel-border: #2b2b2b; /* dark_modern.json:66 */
+  --vscode-focusBorder: #0078d4; /* dark_modern.json:48 */
+  --vscode-panelTitle-activeForeground: #cccccc; /* dark_modern.json:69 */
+  --vscode-panelTitle-inactiveForeground: #9d9d9d; /* dark_modern.json:70 */
+  --vscode-panelTitle-activeBorder: #0078d4; /* dark_modern.json:68 */
+  --vscode-input-background: #313131; /* dark_modern.json:51 */
+  --vscode-input-foreground: #cccccc; /* dark_modern.json:53 */
+  --vscode-input-border: #3c3c3c; /* dark_modern.json:52 */
+  --vscode-list-hoverBackground: #2a2d2e; /* colors/listColors.ts:66 dark */
+  --vscode-textLink-foreground: #4daafc; /* dark_modern.json:122 */
+  --vscode-editorInfo-foreground: #59a4f9; /* colors/editorColors.ts:97 dark */
+  --vscode-charts-green: #89d185; /* colors/chartsColors.ts:39 dark */
+  --vscode-list-warningForeground: #cca700; /* colors/listColors.ts:97 dark */
+  --vscode-list-errorForeground: #f88070; /* colors/listColors.ts:94 dark */
+  --vscode-editorWarning-foreground: #cca700; /* colors/editorColors.ts:84 dark */
+  --vscode-errorForeground: #f85149; /* dark_modern.json:47 */
+  /* contrastBorder, contrastActiveBorder: unset (colors/baseColors.ts:42, :46 dark null) */
+}
+
+/* Light Modern (type vs; extensions/theme-defaults/package.json:49) */
+.vscode-light {
+  --vscode-foreground: #3b3b3b; /* light_modern.json:51 */
+  --vscode-descriptionForeground: #3b3b3b; /* light_modern.json:27 */
+  --vscode-editor-background: #ffffff; /* light_modern.json:32 */
+  --vscode-editor-foreground: #3b3b3b; /* light_modern.json:33 */
+  --vscode-panel-border: #e5e5e5; /* light_modern.json:77 */
+  --vscode-focusBorder: #005fb8; /* light_modern.json:50 */
+  --vscode-panelTitle-activeForeground: #3b3b3b; /* light_modern.json:80 */
+  --vscode-panelTitle-inactiveForeground: #3b3b3b; /* light_modern.json:81 */
+  --vscode-panelTitle-activeBorder: #005fb8; /* light_modern.json:79 */
+  --vscode-input-background: #ffffff; /* light_modern.json:53 */
+  --vscode-input-foreground: #3b3b3b; /* light_modern.json:55 */
+  --vscode-input-border: #cecece; /* light_modern.json:54 */
+  --vscode-list-hoverBackground: #f2f2f2; /* light_modern.json:64 */
+  --vscode-textLink-foreground: #005fb8; /* light_modern.json:142 */
+  --vscode-editorInfo-foreground: #0063d3; /* colors/editorColors.ts:97 light */
+  --vscode-charts-green: #388a34; /* colors/chartsColors.ts:39 light */
+  --vscode-list-warningForeground: #855f00; /* colors/listColors.ts:97 light */
+  --vscode-list-errorForeground: #b01011; /* colors/listColors.ts:94 light */
+  --vscode-editorWarning-foreground: #bf8803; /* colors/editorColors.ts:84 light */
+  --vscode-errorForeground: #f85149; /* light_modern.json:49 */
+  /* contrastBorder, contrastActiveBorder: unset (colors/baseColors.ts:42, :46 light null) */
+}
+
+/* Dark High Contrast (type hc-black; extensions/theme-defaults/package.json:67) */
+.vscode-high-contrast {
+  --vscode-foreground: #ffffff; /* colors/baseColors.ts:14 hcDark */
+  --vscode-descriptionForeground: rgba(255, 255, 255, 0.7); /* colors/baseColors.ts:30 hcDark transparent(foreground, 0.7) */
+  --vscode-editor-background: #000000; /* hc_black.json:5 */
+  --vscode-editor-foreground: #ffffff; /* hc_black.json:6 */
+  --vscode-panel-border: #6fc3df; /* theme.ts:502 hcDark contrastBorder */
+  --vscode-focusBorder: #f38518; /* colors/baseColors.ts:38 hcDark */
+  --vscode-panelTitle-activeForeground: #ffffff; /* theme.ts:516 hcDark */
+  --vscode-panelTitle-inactiveForeground: #ffffff; /* theme.ts:523 hcDark */
+  --vscode-panelTitle-activeBorder: #6fc3df; /* theme.ts:530 hcDark contrastBorder */
+  --vscode-input-background: #000000; /* colors/inputColors.ts:21 hcDark */
+  --vscode-input-foreground: #ffffff; /* colors/inputColors.ts:25 foreground */
+  --vscode-input-border: #6fc3df; /* colors/inputColors.ts:29 hcDark contrastBorder */
+  --vscode-list-hoverBackground: rgba(255, 255, 255, 0.1); /* colors/listColors.ts:66 hcDark */
+  --vscode-textLink-foreground: #21a6ff; /* colors/baseColors.ts:57 hcDark */
+  --vscode-editorInfo-foreground: #59a4f9; /* colors/editorColors.ts:97 hcDark */
+  --vscode-charts-green: #89d185; /* colors/chartsColors.ts:39 hcDark */
+  --vscode-editorWarning-foreground: #ffd370; /* colors/editorColors.ts:84 hcDark */
+  --vscode-errorForeground: #f48771; /* colors/baseColors.ts:26 hcDark */
+  --vscode-contrastBorder: #6fc3df; /* colors/baseColors.ts:42 hcDark */
+  --vscode-contrastActiveBorder: #f38518; /* colors/baseColors.ts:46 hcDark focusBorder */
+  /* list.warningForeground, list.errorForeground: unset (colors/listColors.ts:97, :94 hcDark null) */
+}
+
+/* Light High Contrast (type hc-light; extensions/theme-defaults/package.json:73) */
+.vscode-high-contrast-light {
+  --vscode-foreground: #292929; /* colors/baseColors.ts:14 hcLight */
+  --vscode-descriptionForeground: rgba(41, 41, 41, 0.7); /* colors/baseColors.ts:30 hcLight transparent(foreground, 0.7) */
+  --vscode-editor-background: #ffffff; /* colors/editorColors.ts:20 hcLight (hc_light.json sets none) */
+  --vscode-editor-foreground: #292929; /* colors/editorColors.ts:24 hcLight foreground */
+  --vscode-panel-border: #0f4a85; /* theme.ts:503 hcLight contrastBorder */
+  --vscode-focusBorder: #006bbd; /* colors/baseColors.ts:38 hcLight */
+  --vscode-panelTitle-activeForeground: #292929; /* theme.ts:517 hcLight editorForeground */
+  --vscode-panelTitle-inactiveForeground: #292929; /* theme.ts:524 hcLight editorForeground */
+  --vscode-panelTitle-activeBorder: #b5200d; /* theme.ts:531 hcLight */
+  --vscode-input-background: #ffffff; /* colors/inputColors.ts:21 hcLight */
+  --vscode-input-foreground: #292929; /* colors/inputColors.ts:25 foreground */
+  --vscode-input-border: #0f4a85; /* colors/inputColors.ts:29 hcLight contrastBorder */
+  --vscode-list-hoverBackground: rgba(15, 74, 133, 0.1); /* colors/listColors.ts:66 hcLight */
+  --vscode-textLink-foreground: #0f4a85; /* colors/baseColors.ts:57 hcLight */
+  --vscode-editorInfo-foreground: #0063d3; /* colors/editorColors.ts:97 hcLight */
+  --vscode-charts-green: #374e06; /* colors/chartsColors.ts:39 hcLight */
+  --vscode-editorWarning-foreground: #895503; /* colors/editorColors.ts:84 hcLight */
+  --vscode-errorForeground: #b5200d; /* colors/baseColors.ts:26 hcLight */
+  --vscode-contrastBorder: #0f4a85; /* colors/baseColors.ts:42 hcLight */
+  --vscode-contrastActiveBorder: #006bbd; /* colors/baseColors.ts:46 hcLight focusBorder */
+  /* list.warningForeground, list.errorForeground: unset (colors/listColors.ts:97, :94 hcLight null) */
+}
+
+/* What the Storybook paints a themed surface with — the editor's own colours, as a webview panel's body has them. */
+.vscode-dark,
+.vscode-light,
+.vscode-high-contrast,
+.vscode-high-contrast-light {
+  background-color: var(--vscode-editor-background);
+  color: var(--vscode-foreground);
+}

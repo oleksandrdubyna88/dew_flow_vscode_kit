@@ -1,0 +1,322 @@
+/*
+ * @oleksandrdubyna88/vscode-webview-kit/components.css — the webview components' one stylesheet
+ * (todo/PLAN_kit_components_storybook.md §4.8).
+ *
+ * CLASSES ONLY. The components set no style attribute and the page needs no 'unsafe-inline': link this file with
+ * the render's nonce (<link rel="stylesheet" nonce="..." href="...">) under a CSP of style-src 'nonce-...'. It
+ * fetches nothing - no url(), no @import - and every size is in em, so the page's text size scales it.
+ *
+ * THEME TOKENS. Every colour is a --kit-* token mapped onto a --vscode-* variable, so light, dark and high
+ * contrast are VS Code's to set. The tokens are declared on each component's ROOT, not on :root: a custom property
+ * holding var() resolves where it is declared, and a sub-panel (or a Storybook matrix cell) that sets its own
+ * --vscode-* values must be followed.
+ *
+ * NAMING, which src/test/contrast.test.ts derives its pairs from:
+ *   -fg    text; needs 4.5:1 against --kit-bg (or against its own -bg sibling where one exists)
+ *   -mark  a non-text indicator (focus, the selected tab, a tone); needs 3:1 against --kit-bg
+ *   -bg / -border  the theme's own surfaces and decoration, not held to a ratio: what identifies a control here is
+ *          its text and the -mark colours, never a border alone.
+ *
+ * Two mappings are not the obvious ones, measured against VS Code's resolved theme values (.storybook/vscode-themes.css):
+ * the ok tone reads charts-green, because Light Modern's testing-iconPassed (#73c991) is below 3:1 on white; the
+ * warning and critical tones read the list colours FIRST and fall back to editorWarning / errorForeground, because
+ * both high-contrast themes leave list-warningForeground and list-errorForeground unset.
+ */
+
+.kit-tabs,
+.kit-table,
+.kit-rec {
+  --kit-fg: var(--vscode-foreground, #cccccc);
+  --kit-muted-fg: var(--vscode-descriptionForeground, var(--vscode-foreground, #cccccc));
+  --kit-bg: var(--vscode-editor-background, #1f1f1f);
+  --kit-border: var(--vscode-panel-border, transparent);
+  --kit-focus-mark: var(--vscode-focusBorder, #0078d4);
+  --kit-tab-fg: var(--vscode-panelTitle-inactiveForeground, var(--vscode-foreground, #cccccc));
+  --kit-tab-active-fg: var(--vscode-panelTitle-activeForeground, var(--vscode-foreground, #cccccc));
+  --kit-tab-active-mark: var(--vscode-panelTitle-activeBorder, var(--vscode-focusBorder, #0078d4));
+  --kit-input-fg: var(--vscode-input-foreground, var(--vscode-foreground, #cccccc));
+  --kit-input-bg: var(--vscode-input-background, var(--vscode-editor-background, #1f1f1f));
+  --kit-input-border: var(--vscode-input-border, transparent);
+  --kit-row-hover-bg: var(--vscode-list-hoverBackground, transparent);
+  --kit-link-fg: var(--vscode-textLink-foreground, var(--vscode-foreground, #cccccc));
+  --kit-tone-neutral-mark: var(--vscode-descriptionForeground, var(--vscode-foreground, #cccccc));
+  --kit-tone-info-mark: var(--vscode-editorInfo-foreground, #59a4f9);
+  --kit-tone-ok-mark: var(--vscode-charts-green, #89d185);
+  --kit-tone-warning-mark: var(--vscode-list-warningForeground, var(--vscode-editorWarning-foreground, #cca700));
+  --kit-tone-critical-mark: var(--vscode-list-errorForeground, var(--vscode-errorForeground, #f48771));
+  /* High contrast only: VS Code sets these in its high-contrast themes and leaves them unset elsewhere. */
+  --kit-hc-border: var(--vscode-contrastBorder, transparent);
+  --kit-hc-active-border: var(--vscode-contrastActiveBorder, transparent);
+  color: var(--kit-fg);
+  font-family: var(--vscode-font-family, sans-serif);
+}
+
+/* ---- status marks (Tabs) ---------------------------------------------------------------------------------- */
+
+.kit-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  margin-left: 0.5em;
+  padding: 0 0.4em;
+  border-left: 0.2em solid var(--kit-mark-colour, var(--kit-tone-neutral-mark));
+  color: var(--kit-fg);
+  font-size: 0.9em;
+}
+
+.kit-mark__glyph {
+  color: var(--kit-mark-colour, var(--kit-tone-neutral-mark));
+}
+
+.kit-mark__word {
+  color: var(--kit-fg);
+}
+
+.kit-mark--neutral { --kit-mark-colour: var(--kit-tone-neutral-mark); }
+.kit-mark--info { --kit-mark-colour: var(--kit-tone-info-mark); }
+.kit-mark--ok { --kit-mark-colour: var(--kit-tone-ok-mark); }
+.kit-mark--warning { --kit-mark-colour: var(--kit-tone-warning-mark); }
+.kit-mark--critical { --kit-mark-colour: var(--kit-tone-critical-mark); }
+
+/* ---- Tabs ------------------------------------------------------------------------------------------------- */
+
+.kit-tabs__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2em;
+  border-bottom: 1px solid var(--kit-border);
+}
+
+.kit-tab {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.4em 0.8em;
+  border: 1px solid var(--kit-hc-border);
+  border-bottom: 0.15em solid transparent;
+  background: transparent;
+  color: var(--kit-tab-fg);
+  font: inherit;
+  cursor: pointer;
+}
+
+.kit-tab--selected {
+  border-bottom-color: var(--kit-tab-active-mark);
+  color: var(--kit-tab-active-fg);
+  font-weight: 600;
+}
+
+.kit-tab__label,
+.kit-tab__status {
+  pointer-events: none;
+}
+
+.kit-tabs__panel {
+  padding: 0.6em 0.2em;
+}
+
+/* ---- DataTable -------------------------------------------------------------------------------------------- */
+
+.kit-table__search {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 24em;
+  margin: 0 0 0.3em;
+  padding: 0.3em 0.5em;
+  border: 1px solid var(--kit-input-border);
+  background: var(--kit-input-bg);
+  color: var(--kit-input-fg);
+  font: inherit;
+}
+
+.kit-table__count {
+  margin: 0 0 0.4em;
+  color: var(--kit-muted-fg);
+  font-size: 0.9em;
+}
+
+.kit-table__grid {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.kit-table__header {
+  border-bottom: 1px solid var(--kit-border);
+}
+
+.kit-table__head-row {
+  text-align: left;
+}
+
+.kit-table__head {
+  padding: 0.3em 0.6em 0.3em 0;
+  color: var(--kit-fg);
+  font-weight: 600;
+  text-align: left;
+  vertical-align: bottom;
+}
+
+.kit-table__head--end {
+  text-align: right;
+}
+
+.kit-table__head--sorted-ascending,
+.kit-table__head--sorted-descending {
+  color: var(--kit-fg);
+}
+
+.kit-table__sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.kit-table__sort-label {
+  text-decoration: underline dotted;
+}
+
+.kit-table__arrow::after {
+  content: '\2195';
+  color: var(--kit-muted-fg);
+}
+
+.kit-table__head--sorted-ascending .kit-table__arrow::after {
+  content: '\25B2';
+  color: var(--kit-fg);
+}
+
+.kit-table__head--sorted-descending .kit-table__arrow::after {
+  content: '\25BC';
+  color: var(--kit-fg);
+}
+
+.kit-table__body {
+  vertical-align: top;
+}
+
+.kit-table__row:hover {
+  background: var(--kit-row-hover-bg);
+}
+
+.kit-table__cell {
+  padding: 0.25em 0.6em 0.25em 0;
+  overflow-wrap: anywhere;
+}
+
+.kit-table__cell--end {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.kit-table__reveal {
+  padding: 0.25em 0;
+  overflow-wrap: anywhere;
+}
+
+.kit-table__reveal--shown {
+  font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.kit-table__reveal-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--kit-link-fg);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.kit-table__empty-cell {
+  padding: 0.5em 0;
+  color: var(--kit-muted-fg);
+  font-style: italic;
+}
+
+.kit-table__empty {
+  text-align: left;
+}
+
+/* ---- RecommendationCard ----------------------------------------------------------------------------------- */
+
+.kit-rec {
+  --kit-rec-mark: var(--kit-tone-neutral-mark);
+  margin: 0.4em 0;
+  padding: 0.6em 0.8em;
+  border: 1px solid var(--kit-hc-border);
+  border-left: 0.3em solid var(--kit-rec-mark);
+}
+
+.kit-rec--neutral { --kit-rec-mark: var(--kit-tone-neutral-mark); }
+.kit-rec--info { --kit-rec-mark: var(--kit-tone-info-mark); }
+.kit-rec--ok { --kit-rec-mark: var(--kit-tone-ok-mark); }
+.kit-rec--warning { --kit-rec-mark: var(--kit-tone-warning-mark); }
+.kit-rec--critical { --kit-rec-mark: var(--kit-tone-critical-mark); }
+
+.kit-rec__head {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+}
+
+.kit-rec__glyph {
+  color: var(--kit-rec-mark);
+  font-size: 1.1em;
+}
+
+.kit-rec__word {
+  color: var(--kit-fg);
+}
+
+.kit-rec__sentence {
+  margin: 0.3em 0;
+}
+
+.kit-rec__action {
+  margin: 0.4em 0;
+}
+
+.kit-rec__evidence-label {
+  margin: 0.4em 0 0.1em;
+  color: var(--kit-muted-fg);
+  font-size: 0.9em;
+}
+
+.kit-rec__evidence {
+  margin: 0;
+  padding-left: 1.2em;
+  color: var(--kit-muted-fg);
+  font-size: 0.9em;
+}
+
+.kit-rec__evidence-item {
+  margin: 0.1em 0;
+}
+
+/* ---- focus, and high contrast ------------------------------------------------------------------------------ */
+
+.kit-tab:focus-visible,
+.kit-tabs__panel:focus-visible,
+.kit-table__sort:focus-visible,
+.kit-table__reveal-button:focus-visible,
+.kit-table__search:focus-visible {
+  outline: 0.15em solid var(--kit-focus-mark);
+  outline-offset: 0.1em;
+}
+
+.vscode-high-contrast .kit-tab--selected,
+.vscode-high-contrast-light .kit-tab--selected {
+  outline: 1px dashed var(--kit-hc-active-border);
+  outline-offset: -1px;
+}
+
+.vscode-high-contrast .kit-table__search,
+.vscode-high-contrast-light .kit-table__search {
+  border-color: var(--kit-hc-border);
+}

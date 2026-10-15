@@ -64,6 +64,41 @@ test('npm pack carries the bin script, the manifest, README and LICENSE, and oth
   assert.deepEqual(stray, [], 'files a publish would carry that nobody meant to ship');
 });
 
+// ---- the components entry and its stylesheet (todo/PLAN_kit_components_storybook.md §4.2) -------------------------
+
+interface ExportsManifest {
+  readonly exports: Readonly<Record<string, unknown>>;
+  readonly sideEffects: unknown;
+  readonly dependencies?: unknown;
+}
+
+const exportsManifest = (): ExportsManifest => JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')) as ExportsManifest;
+
+test('the manifest exports ./components (types first) and ./components.css, and declares the stylesheet a side effect', () => {
+  const { exports, sideEffects } = exportsManifest();
+  assert.deepEqual(exports['./components'], { types: './dist/components/index.d.ts', require: './dist/components/index.js', default: './dist/components/index.js' });
+  assert.equal(exports['./components.css'], './dist/components/components.css');
+  // A stylesheet IS a side effect. esbuild 0.28 keeps a bare CSS import even under sideEffects: false (measured, K1);
+  // bundlers that honour the field for CSS (webpack, Rollup) would drop it, so the manifest says what is true.
+  assert.deepEqual(sideEffects, ['*.css']);
+});
+
+test('the package still has no runtime dependency', () => {
+  assert.equal(exportsManifest().dependencies, undefined);
+});
+
+test('the build copies every exported stylesheet next to its module, from src/', () => {
+  const run = spawnSync(process.execPath, [path.join(ROOT, 'scripts', 'copy-css.mjs')], { cwd: ROOT, encoding: 'utf8', timeout: 30_000 });
+  assert.equal(run.status, 0, run.stderr);
+  assert.equal(fs.readFileSync(path.join(ROOT, 'dist', 'components', 'components.css'), 'utf8'), fs.readFileSync(path.join(ROOT, 'src', 'components', 'components.css'), 'utf8'));
+});
+
+test('nothing of the Storybook, the stories or the gallery is in what a publish carries', { timeout: 90_000 }, () => {
+  const shipped = packedPaths().filter((p) => /(^|\/)(\.storybook|stories|storybook-static|gallery)(\/|$)|\.stories\.|jsdom|axe/.test(p));
+
+  assert.deepEqual(shipped, []);
+});
+
 /** This build, laid out as npm installs the package: `node_modules/<name>/{package.json, scripts/, dist/}`. */
 function installedLayout(): { readonly root: string; readonly script: string } {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-installed-'));

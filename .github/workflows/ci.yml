@@ -108,3 +108,13 @@ jobs:
 
       - name: Build the Storybook
         run: npm run build-storybook
+
+      # No table scrolls sideways (todo/PLAN_kit_components_storybook.md §4.6a): every DOM gallery case in real Chrome
+      # (on GitHub's ubuntu image), 300 / 1280 / 1920 px x four themes x three sizes, each also in an 18em box. jsdom has
+      # no layout, so only a browser can say this. No browser would be a RED step, never a skip.
+      - name: Layout check
+        run: npm run layout-check
+
+      # The check's own proof: a planted min-width and a planted nowrap, in copies of the stylesheet, must each turn it RED.
+      - name: Layout check turns red on a planted defect
+        run: npm run layout-check -- --companion

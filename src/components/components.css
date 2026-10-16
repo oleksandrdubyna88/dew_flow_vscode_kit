@@ -116,6 +116,17 @@
 
 /* ---- DataTable -------------------------------------------------------------------------------------------- */
 
+/*
+ * A TABLE NEVER SCROLLS SIDEWAYS AND IS NEVER WIDER THAN ITS BOX (the owner, 2026-10-15; plan 4.6a). .kit-table is a
+ * size container, so every rule below that reads a width reads the TABLE's own - a table in a narrow card adapts at
+ * 1920 px too. Columns shrink and wrap; a header breaks only between words; a cell breaks a word only as a last
+ * resort; and below the width chosen by the table's stack option (narrow 30em, medium 40em, wide 60em, never) each
+ * row shows as "label: value" lines. No rule here makes a box scroll or forces a width (componentsCss.test.ts holds it).
+ */
+.kit-table {
+  container: kit-table / inline-size;
+}
+
 .kit-table__search {
   box-sizing: border-box;
   width: 100%;
@@ -149,6 +160,7 @@
 
 .kit-table__head {
   padding: 0.3em 0.6em 0.3em 0;
+  overflow-wrap: break-word;
   color: var(--kit-fg);
   font-weight: 600;
   text-align: left;
@@ -241,6 +253,180 @@
 
 .kit-table__empty {
   text-align: left;
+}
+
+/* Stacked rows. The header row becomes a wrapped row of the sort buttons after the words "Sort by" (a ::before, so the
+   words are not in any accessible name); a header with no sort button is hidden because every cell carries its name.
+   One block per width: a container query cannot take its width from a variable. */
+
+/* 30em: an end-aligned cell stays on one line only while the table is wider than this (whatever the stack option), and
+   the narrow stack applies. */
+@container kit-table (max-width: 30em) {
+  .kit-table__cell--end {
+    white-space: normal;
+  }
+
+  .kit-table--stack-narrow,
+  .kit-table--stack-narrow > thead,
+  .kit-table--stack-narrow > tbody {
+    display: block;
+    width: 100%;
+  }
+
+  .kit-table--stack-narrow > thead > tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.2em 0.9em;
+    padding-bottom: 0.25em;
+  }
+
+  .kit-table--stack-narrow > thead > tr::before {
+    content: 'Sort by';
+    color: var(--kit-muted-fg);
+  }
+
+  .kit-table--stack-narrow > thead > tr > th {
+    display: block;
+    padding: 0.1em 0;
+  }
+
+  .kit-table--stack-narrow > thead > tr > th:not(:has(.kit-table__sort)) {
+    display: none;
+  }
+
+  .kit-table--stack-narrow > tbody > tr {
+    display: block;
+    padding: 0.4em 0.2em;
+    border-top: 1px solid var(--kit-border);
+  }
+
+  .kit-table--stack-narrow > tbody > tr[hidden] {
+    display: none;
+  }
+
+  .kit-table--stack-narrow > tbody > tr > td {
+    display: block;
+    padding: 0.05em 0;
+    text-align: left;
+    white-space: normal;
+  }
+
+  .kit-table--stack-narrow > tbody > tr > td[data-kit-label]::before {
+    content: attr(data-kit-label) ': ';
+    color: var(--kit-muted-fg);
+  }
+}
+
+@container kit-table (max-width: 40em) {
+  .kit-table--stack-medium,
+  .kit-table--stack-medium > thead,
+  .kit-table--stack-medium > tbody {
+    display: block;
+    width: 100%;
+  }
+
+  .kit-table--stack-medium > thead > tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.2em 0.9em;
+    padding-bottom: 0.25em;
+  }
+
+  .kit-table--stack-medium > thead > tr::before {
+    content: 'Sort by';
+    color: var(--kit-muted-fg);
+  }
+
+  .kit-table--stack-medium > thead > tr > th {
+    display: block;
+    padding: 0.1em 0;
+  }
+
+  .kit-table--stack-medium > thead > tr > th:not(:has(.kit-table__sort)) {
+    display: none;
+  }
+
+  .kit-table--stack-medium > tbody > tr {
+    display: block;
+    padding: 0.4em 0.2em;
+    border-top: 1px solid var(--kit-border);
+  }
+
+  .kit-table--stack-medium > tbody > tr[hidden] {
+    display: none;
+  }
+
+  .kit-table--stack-medium > tbody > tr > td {
+    display: block;
+    padding: 0.05em 0;
+    text-align: left;
+    white-space: normal;
+  }
+
+  .kit-table--stack-medium > tbody > tr > td[data-kit-label]::before {
+    content: attr(data-kit-label) ': ';
+    color: var(--kit-muted-fg);
+  }
+}
+
+@container kit-table (max-width: 60em) {
+  .kit-table--stack-wide,
+  .kit-table--stack-wide > thead,
+  .kit-table--stack-wide > tbody {
+    display: block;
+    width: 100%;
+  }
+
+  .kit-table--stack-wide > thead > tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.2em 0.9em;
+    padding-bottom: 0.25em;
+  }
+
+  .kit-table--stack-wide > thead > tr::before {
+    content: 'Sort by';
+    color: var(--kit-muted-fg);
+  }
+
+  .kit-table--stack-wide > thead > tr > th {
+    display: block;
+    padding: 0.1em 0;
+  }
+
+  .kit-table--stack-wide > thead > tr > th:not(:has(.kit-table__sort)) {
+    display: none;
+  }
+
+  .kit-table--stack-wide > tbody > tr {
+    display: block;
+    padding: 0.4em 0.2em;
+    border-top: 1px solid var(--kit-border);
+  }
+
+  .kit-table--stack-wide > tbody > tr[hidden] {
+    display: none;
+  }
+
+  .kit-table--stack-wide > tbody > tr > td {
+    display: block;
+    padding: 0.05em 0;
+    text-align: left;
+    white-space: normal;
+  }
+
+  .kit-table--stack-wide > tbody > tr > td[data-kit-label]::before {
+    content: attr(data-kit-label) ': ';
+    color: var(--kit-muted-fg);
+  }
+}
+
+/* stack: never - a table at every width, its columns shrinking and wrapping; there is no block for it above. */
+.kit-table--stack-never {
+  table-layout: auto;
 }
 
 /* ---- RecommendationCard ----------------------------------------------------------------------------------- */

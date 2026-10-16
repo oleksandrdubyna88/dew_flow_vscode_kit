@@ -316,6 +316,14 @@ tabs.setStatus('linux', { tone: 'ok', word: 'All fine' });   // live, as data ar
   person's choice, never `select()` from code.
 - **The reveal never puts a hidden value in the page before you hand it over**, and `onReveal` receives the row's
   index in the `rows` you gave — not its place after a sort or a search.
+- **A table never scrolls sideways and is never wider than its box.** Columns shrink and wrap; a header breaks only
+  between words, a cell breaks a word only as a last resort. Below a width OF THE TABLE ITSELF (`.kit-table` is a CSS
+  size container, so a table in a narrow card adapts on a wide screen too) every row stacks into "label: value" lines,
+  and the header row becomes a wrapped row of sort buttons after the words "Sort by". The option is
+  `stack: 'narrow' | 'medium' | 'wide' | 'never'` — below `30em`, `40em`, `60em` of the table's width, or at no
+  width — `'medium'` when absent; anything else is refused naming the four. Every body cell carries `data-kit-label`
+  (its column's header, set with `setAttribute`) for the stylesheet to draw. Keep headers short; a consumer who wants
+  fewer columns passes fewer columns — the kit hides none.
 - **What your page harness must allow** (a strict one refuses whatever it does not model): the tags `div span strong
   p ul li button input table thead tbody tr th td`; the attributes `role id type tabindex scope colspan aria-*
   data-kit-*`; `className`, `textContent`, `hidden`, `focus()`, an input's `value`; the events `click`, `keydown`,
@@ -327,6 +335,17 @@ tabs.setStatus('linux', { tone: 'ok', word: 'All fine' });   // live, as data ar
 **The Storybook** shows every component and state, and the existing display controls and Help viewer, under VS Code's
 four reference themes and three text sizes, with axe's panel: `npm run storybook` (or `npm run build-storybook` for
 `storybook-static/`). It is a development tool; nothing of it ships.
+
+**The layout check** proves the "fits its box" rule in a real browser, because jsdom has no layout:
+`npm run layout-check` renders every DOM case of the gallery with the stylesheet into one page and drives headless
+Chrome over the DevTools protocol (Node's own `WebSocket`; no dependency) at 300, 1280 and 1920 px × the four themes ×
+three text sizes, each case also inside an `18em` box. It is RED, naming the case, when the page scrolls sideways, an
+element ends past the window's edge, a box holds content wider than itself, or a table is wider than what holds it.
+Chrome comes from `CHROME_PATH` (a path that names nothing is an error, never a fallback to another browser), then the
+usual install paths (Edge on Windows as a fallback); none found is exit 3, never a skip. `npm run layout-check -- --companion` is its own proof: a planted `min-width` and a planted `nowrap`, in
+copies of the stylesheet, must each turn it RED naming a DataTable case, and the real stylesheet's SHA-256 is compared
+after. CI runs both in the `storybook` job on ubuntu. The profile lives in the git-ignored `testsToDelete-layout-check/`,
+removed when the run ends.
 
 ## Develop
 

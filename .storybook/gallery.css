@@ -56,3 +56,10 @@ body {
   color: var(--vscode-button-foreground, #ffffff);
   font: inherit;
 }
+
+/* A deliberately narrow box: the gallery's eight-column table lives in one, and scripts/layout-check.mjs puts every case
+   in one more (the box never exceeds the page, so a narrow page is not made wider by the harness). */
+.gallery-narrow {
+  width: 18em;
+  max-width: 100%;
+}

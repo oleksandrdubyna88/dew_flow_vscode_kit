@@ -36,6 +36,7 @@ while the help panel — the host half that mints a nonce per render — must.
 | bin | `scripts/help-digests.mjs`, shipped as `vscode-webview-kit-help-digests` (`package.json` `bin` and `files`) | landed (E2.S2; shipped E2.S3) |
 | `components` (entry `./components`) | `dom.ts` (the DOM port: `KitDocument`, `KitElement`, the tag / attribute / event surface), `checks.ts` (the door's refusals), `status.ts` (`STATUS_TONES`, a mark = glyph + word), `tabs.ts` (`createTabs`), `tableOrder.ts` (sort and filter, pure), `dataTable.ts` (`createDataTable`), `recommendationCard.ts` (`createRecommendationCard`), `index.ts` (the entry), `components.css` (theme tokens and rules, shipped as `./components.css`) | landed (K1) |
 | Storybook | `.storybook/` (`main.ts`, `preview.ts` with the theme and size toolbars, `vscode-themes.css` — VS Code's resolved reference-theme values, `gallery.css`), `stories/*.stories.ts` over `src/test/gallery/` | landed (K1); a devDependency, never shipped |
+| layout check | `scripts/layout-check.mjs` (headless Chrome over the DevTools protocol), `.storybook/layout-page.ts` (the page it loads: the gallery's DOM cases twice, plus the overflow probe) | landed (K1, 4.6a); a development check, never shipped |
 
 ## The display module
 
@@ -321,7 +322,7 @@ flowchart TB
     order["tableOrder.ts: pure order and filter, absent last"]
     card["createRecommendationCard: glyph + word, sentence, one consumer button, evidence"]
     status["status.ts: five tones, a glyph and a WORD each"]
-    css["components.css: --kit-* tokens on --vscode-* variables, classes only"]
+    css["components.css: --kit-* tokens on --vscode-* variables, classes only; .kit-table is a size container: stacked rows below 30 / 40 / 60em of the TABLE"]
   end
   host["consumer's extension host"]
   page --> tabs
@@ -359,6 +360,28 @@ nothing else; the hidden text enters the DOM only through `reveal(index, text)`,
 `setRows` drops every revealed text. **Tabs** select on a person's click or key (arrows wrap; Home, End), tell
 `onSelect` only then, and take a status mark (a tone AND its word) live through `setStatus`. **The card** places ONE
 button the consumer built — anything but a `BUTTON` is refused — and wires nothing on it.
+
+**Fit, never scroll** (K1 4.6a, the owner's rule of 2026-10-15). A table is never a scroll container and never wider
+than its box. `.kit-table` is a CSS size container (`container: kit-table / inline-size`), so every width rule reads the
+TABLE's own width, not the window's: a table in a narrow card adapts at 1920 px too. Columns shrink and wrap — a header
+breaks only between words (`overflow-wrap: break-word`), a cell anywhere as a last resort (`anywhere`), an end-aligned
+cell stays on one line only above 30em. The `stack` option (`'narrow' | 'medium' | 'wide' | 'never'`, default
+`'medium'`, an unknown value refused naming the four) puts `kit-table--stack-<value>` on the `table` element — on the
+table and not on the root, because a container query styles the container's descendants only. Below 30 / 40 / 60em
+each row becomes "label: value" lines: every body cell carries `data-kit-label` (its column's header; the reveal
+cell its header; the empty-result row none) and the stylesheet draws it with `td[data-kit-label]::before`; the header
+row becomes a wrapped row of the sortable headers' buttons after a CSS-drawn `Sort by`, so click / Enter / Space still
+sort; a header with no sort button is hidden there. `stack: 'never'` has no block: a table at every width. Hiding
+columns is deliberately not offered — it would hide data the consumer chose to show.
+
+`scripts/layout-check.mjs` proves it where it can be proved, in a browser: it bundles `.storybook/layout-page.ts` (esbuild,
+already a devDependency) for the browser, writes one static page with `components.css`, the theme fixture and the
+gallery frame CSS into a git-ignored `testsToDelete-layout-check/`, drives headless Chrome with Node's own `WebSocket`
+(`Emulation.setDeviceMetricsOverride` sets the viewport; `--window-size` cannot go under ~500 px), and at 300 / 1280 /
+1920 px × four themes × three sizes asks the page's probe about every DOM case rendered in the page and in an 18em box.
+The matrix is 26 cases × 2 × 36 = 1872 case-states in 36 page states. CI runs it and its `--companion` (two planted
+defects in COPIES of the stylesheet that must go RED naming a DataTable case) in the `storybook` job. `layoutCheck.test.ts`
+holds, without a browser, what the check needs: the gallery's breaking cases, CI's steps, and that no browser is exit 3.
 
 **The door.** Each component checks its options once (`checks.ts`) and refuses a mistake with a `TypeError` naming
 what, where and what would be accepted — an empty label, a repeated or malformed id or key, an unknown tone, a sort

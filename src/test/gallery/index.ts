@@ -1,4 +1,4 @@
-import { createDataTable, type DataTableOptions } from '../../components/dataTable';
+import { createDataTable, STACK_WIDTHS, type DataTableOptions } from '../../components/dataTable';
 import { children, element, type KitDocument, type KitElement } from '../../components/dom';
 import { createRecommendationCard } from '../../components/recommendationCard';
 import { STATUS_TONES } from '../../components/status';
@@ -107,6 +107,27 @@ function tableOptions(overrides: Partial<DataTableOptions<Sample>> = {}): DataTa
   };
 }
 
+/** Eight columns of made-up text and numbers — more than a narrow box can show side by side. */
+const WIDE_KEYS = ['name', 'owner', 'state', 'region', 'age', 'size', 'count', 'note'] as const;
+
+type WideRow = Readonly<Record<(typeof WIDE_KEYS)[number], string | number>>;
+
+const WIDE_ROWS: readonly WideRow[] = [
+  { name: 'alpha', owner: 'team-one', state: 'running', region: 'north', age: 12, size: 4096, count: 9, note: 'first sample' },
+  { name: 'bravo', owner: 'team-two', state: 'stopped', region: 'south', age: 3, size: 65_536, count: 10, note: 'second sample, a little longer' },
+];
+
+function wideOptions(): DataTableOptions<WideRow> {
+  return {
+    label: 'Wide samples',
+    columns: WIDE_KEYS.map((key) => ({ key, header: `${key[0]?.toUpperCase() ?? ''}${key.slice(1)}`, value: (row: WideRow) => row[key], align: typeof WIDE_ROWS[0]?.[key] === 'number' ? 'end' as const : 'start' as const })),
+    rows: WIDE_ROWS,
+    search: { label: 'Search wide samples' },
+  };
+}
+
+const LONG_PATH = '/mnt/c/Users/someone/projects/a-long-folder-name/node_modules/.pnpm/some-package-with-a-long-name@1.2.3/node_modules/some-package/lib/index.js';
+
 const TABLE: readonly GalleryCase[] = [
   { kind: 'dom', id: 'unsorted', title: 'Unsorted', render: (doc) => createDataTable(doc, tableOptions()).root },
   { kind: 'dom', id: 'sorted-ascending', title: 'Sorted ascending', render: (doc) => createDataTable(doc, tableOptions({ sort: { key: 'count', direction: 'ascending' } })).root },
@@ -134,6 +155,14 @@ const TABLE: readonly GalleryCase[] = [
   },
   { kind: 'dom', id: 'plain', title: 'No search, no reveal', render: (doc) => createDataTable(doc, { label: 'Samples', columns: tableOptions().columns, rows: SAMPLES }).root },
   { kind: 'dom', id: 'empty', title: 'No rows', render: (doc) => createDataTable(doc, tableOptions({ rows: [] })).root },
+  // The cases that would break "a table fits its box" (todo/PLAN_kit_components_storybook.md §4.6a, §5.2 item 27) —
+  // `scripts/layout-check.mjs` renders each at three widths, four themes and three sizes, in the page and in a narrow box.
+  { kind: 'dom', id: 'eight-columns', title: 'Eight columns in an 18em box', render: (doc) => children(element(doc, 'div', 'gallery-narrow'), createDataTable(doc, wideOptions()).root) },
+  { kind: 'dom', id: 'unbreakable-cell', title: 'A long path with no space in a cell', render: (doc) => createDataTable(doc, tableOptions({ rows: [{ name: LONG_PATH, size: 1_048_576, count: 1 }, ...SAMPLES] })).root },
+  { kind: 'dom', id: 'long-header', title: 'A long header', render: (doc) => createDataTable(doc, tableOptions({ columns: [{ key: 'name', header: 'The name this sample was given when it was first recorded', value: (row) => row.name }, ...tableOptions().columns.slice(1)] })).root },
+  ...STACK_WIDTHS.map((stack): GalleryCase => ({
+    kind: 'dom', id: `stack-${stack}`, title: `Stacks ${stack === 'never' ? 'never' : `below the ${stack} width`}`, render: (doc) => createDataTable(doc, tableOptions({ stack })).root,
+  })),
 ];
 
 // ---- RecommendationCard ----------------------------------------------------------------------------------

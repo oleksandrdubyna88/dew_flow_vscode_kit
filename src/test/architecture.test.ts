@@ -108,7 +108,8 @@ const PAGE_MODULES: readonly string[] = ['src/help/page.ts', 'src/help/messages.
  * compiler and bring nothing, so they are skipped.
  */
 function runtimeImportsOf(file: string, text: string): string[] {
-  const statements = text.matchAll(/^\s*(?:import|export)\s+(type\s+)?[^;]*?\bfrom\s+['"](\.{1,2}\/[^'"]+)['"]/gms);
+  // `from` is optional: `import './effect';` brings a module with no binding, and it runs.
+  const statements = text.matchAll(/^\s*(?:import|export)\s+(type\s+)?(?:[^;]*?\bfrom\s+)?['"](\.{1,2}\/[^'"]+)['"]/gms);
 
   return [...statements]
     .filter(([, typeOnly]) => typeOnly === undefined)
@@ -142,6 +143,25 @@ test('no module a page is rendered by reaches a host module through its imports 
 test('the closure walk finds the known host reach: the panel mints its nonce, and the index re-exports it', () => {
   assert.ok(closureOf('src/help/panel.ts').has('src/webview/nonce.ts'));
   assert.ok(closureOf('src/index.ts').has('src/webview/nonce.ts'));
+});
+
+test('the closure walk reads EVERY run-time import shape — a side-effect import and a multi-line list included — and skips the type-only ones', () => {
+  const fixture = [
+    "import { a } from './a';",
+    "import './effect';",
+    "export * from './star';",
+    "export { b } from '../up/b';",
+    "import type { T } from './types';",
+    "export type { U } from './types2';",
+    'import {',
+    '  c,',
+    "} from './multi';",
+    "import 'not-relative';",
+  ].join('\n');
+
+  assert.deepEqual(runtimeImportsOf('src/components/x.ts', fixture), [
+    'src/components/a.ts', 'src/components/effect.ts', 'src/components/star.ts', 'src/up/b.ts', 'src/components/multi.ts',
+  ]);
 });
 
 // ---------------------------------------------------------------------------------------------------

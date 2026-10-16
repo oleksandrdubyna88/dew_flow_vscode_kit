@@ -5,3 +5,4 @@ dist/
 logs/
 coverage/
 storybook-static/
+testsToDelete-layout-check/

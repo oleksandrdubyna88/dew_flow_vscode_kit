@@ -22,5 +22,6 @@ export {
   type DataTableReveal,
   type DataTableSort,
   type DataTableView,
+  type StackWidth,
 } from './dataTable';
 export { createRecommendationCard, type RecommendationOptions } from './recommendationCard';

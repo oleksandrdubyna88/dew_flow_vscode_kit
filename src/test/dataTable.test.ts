@@ -184,6 +184,43 @@ onEveryDocument(<E extends KitElement<E>>(make: () => Driver<E>, name: string) =
       assert.deepEqual(programs(root), ['node2', 'dotnet2', 'claude2', 'Bash2']);
     });
 
+    /** Each shown-or-hidden body row's cells' labels, row by row. */
+    function labels(root: DomNode): (string | null)[][] {
+      return root.all('tr.kit-table__row').map((row) => row.all('td').map((cell) => cell.attribute('data-kit-label')));
+    }
+
+    test('every body cell carries data-kit-label = its column header — the reveal cell too — and still does after setRows, a sort and a search; the empty row carries none', () => {
+      const driver = make();
+      const view = createDataTable(driver.doc, options({ emptyText: 'No process matches.' }));
+      const root = driver.attach(view.root);
+      const expected = ['PID', 'Program', 'Held', 'Note', 'Command line'];
+      assert.deepEqual(labels(root), ROWS.map(() => expected));
+      view.sortBy('program', 'descending');
+      view.filter('o');
+      view.setRows([...ROWS, { pid: 1, program: 'zsh', held: 5, secret: 'SECRET-zsh' }]);
+      view.reveal(0, 'shown only now');
+      assert.deepEqual(labels(root), [...ROWS, ROWS[0]].map(() => expected));
+      view.filter('zzz');
+      assert.equal(root.one('tr.kit-table__empty').one('td').attribute('data-kit-label'), null, 'the empty row must show no label');
+      assert.deepEqual(root.one('tr.kit-table__empty').all('td').map((cell) => cell.attribute('data-kit-label')), [null], 'the empty row is one cell with no label');
+    });
+
+    test('stack defaults to medium; each of the four values adds its class to the table; an unknown one is refused naming all four', () => {
+      const driver = make();
+      const stackClass = (stack?: 'narrow' | 'medium' | 'wide' | 'never'): string[] => {
+        const root = driver.attach(createDataTable(driver.doc, options(stack === undefined ? {} : { stack })).root);
+        return root.one('table').classes.filter((name) => name.startsWith('kit-table--stack'));
+      };
+      assert.deepEqual(stackClass(), ['kit-table--stack-medium']);
+      for (const stack of ['narrow', 'medium', 'wide', 'never'] as const) {
+        assert.deepEqual(stackClass(stack), [`kit-table--stack-${stack}`]);
+      }
+      assert.throws(
+        () => createDataTable(driver.doc, options({ stack: 'huge' as never })),
+        (error: unknown) => error instanceof TypeError && /DataTable stack must be one of narrow, medium, wide, never, got "huge"/.test(error.message),
+      );
+    });
+
     test('refused, each naming what: no columns, a repeated or malformed key, an empty header or label, a bad sort, a reveal without a column or outside the rows, a non-string revealed text, a value that is not a cell value', () => {
       const driver = make();
       const base = options();

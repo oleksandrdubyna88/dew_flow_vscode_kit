@@ -46,7 +46,8 @@
     "lint": "eslint .",
     "prepublishOnly": "npm run build && npm test",
     "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build -o storybook-static"
+    "build-storybook": "storybook build -o storybook-static",
+    "layout-check": "node scripts/layout-check.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

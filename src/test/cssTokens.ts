@@ -39,6 +39,24 @@ export function rules(css: string): Rule[] {
   return found;
 }
 
+/** One `@container <name> (<condition>) { … }` block: what it asks of the container, and the rules inside. */
+export interface ContainerBlock {
+  readonly name: string;
+  readonly condition: string;
+  readonly rules: readonly Rule[];
+}
+
+/** Every `@container` block of a stylesheet (one level of nesting, which is all the kit writes), comments removed. */
+export function containerBlocks(css: string): ContainerBlock[] {
+  const text = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const found: ContainerBlock[] = [];
+  for (const [, name, condition, body] of text.matchAll(/@container\s+([a-z-]+)?\s*(\([^)]*\))\s*\{((?:[^{}]*\{[^{}]*\})*)\s*\}/g)) {
+    found.push({ name: name ?? '', condition: condition ?? '', rules: rules(body ?? '') });
+  }
+
+  return found;
+}
+
 /** The kit's token block: the one rule declaring `--kit-*` tokens on the three component roots. */
 export function tokenBlock(css: string): ReadonlyMap<string, string> {
   const blocks = rules(css).filter((rule) => [...rule.declarations.keys()].some((name) => name.startsWith('--kit-')) && rule.selectors.includes('.kit-tabs'));

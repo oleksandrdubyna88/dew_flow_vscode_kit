@@ -1,6 +1,6 @@
 # PLAN — kit 0.2.0: Tabs, DataTable, RecommendationCard, theme tokens, and a Storybook
 
-> Status: **in progress, 2026-10-12** — the plan round reached `proceed`; the components, the stylesheet, the Storybook, the axe and contrast checks and the consumer fixture's webview entry are built on `feat/kit-k1-components`; the code round, the pull request and the merge are open. **Amended 2026-10-15** with §4.6a (the owner's review of the E18 mockup: no table ever scrolls sideways), its RED items 25–28 and build step 8a; that part is not built yet. Scope: a new `src/components/` module with its
+> Status: **in progress, 2026-10-12** — the plan round reached `proceed`; the components, the stylesheet, the Storybook, the axe and contrast checks and the consumer fixture's webview entry are built on `feat/kit-k1-components`; the code round, the pull request and the merge are open. **Amended 2026-10-15** with §4.6a (the owner's review of the E18 mockup: no table ever scrolls sideways), its RED items 25–28 and build step 8a; that part is built on the same branch (2026-10-15, as built in §11). Scope: a new `src/components/` module with its
 > own package entry (`./components`) and stylesheet (`./components.css`), a Storybook (devDependencies only),
 > axe and contrast checks in CI, and the docs. This is story **E18.K1** of wsl_care's epic E18
 > (`wsl_care · todo/PLAN_disk_health.md` §3.4 and its E18 table, issue oleksandrdubyna88/wsl_care#87),
@@ -559,3 +559,42 @@ None persistent. A `DataTable` holds the rows it was given and, at most, one rev
 - [ ] The release decision of §7 applied at the merge and recorded in both kit plans.
 - [ ] The gate's plan and code rounds reached `proceed`; CodeRabbit's threads answered and resolved; merged.
 - [ ] This plan promoted to `research/` with `IMPLEMENTED <date>` and its deviations.
+
+## 11. As built (recorded 2026-10-15, on `feat/kit-k1-components`; the sideEffects note of §3 and the §4.6a build)
+
+**§3, `sideEffects`.** The premise that a bundler drops a bare CSS import under `sideEffects: false` was refuted for
+esbuild 0.28.2 by the break-it: with `false` restored, `pack-and-consume`'s browser bundle still emitted the CSS. The
+manifest says `["*.css"]` anyway, because webpack and Rollup honour the field for CSS; the guard is
+`packaging.test.ts` (the manifest test), not the esbuild step.
+
+**§4.6a, built RED-first.** Items 25–28 are in `dataTable.test.ts` (both documents), `componentsCss.test.ts`,
+`layoutCheck.test.ts` and `scripts/layout-check.mjs`. Deviations and decisions the plan did not spell out:
+
+- `kit-table--stack-<value>` is on the `table` element (`kit-table__grid`), not on the `.kit-table` root: a container
+  query styles the container's descendants only, never the container itself.
+- Four gallery cases `stack-narrow|medium|wide|never` stand for "a stacked case per width"; `eight-columns` is wrapped
+  in the gallery's `gallery-narrow` (18em) box by the case itself; `unbreakable-cell` and `long-header` are plain
+  tables. The check additionally renders EVERY DOM case inside the same box (`gallery-narrow`, `max-width: 100%` so a
+  narrow page is not widened by the harness) — 26 cases x 2 renders x 36 states = 1872 case-states.
+- The layout page is `.storybook/layout-page.ts`, bundled for the browser by esbuild (already a devDependency, so no
+  new one) and type-checked by `tsconfig.storybook.json`; it carries the probe (page scroll, element past the edge,
+  `scrollWidth > clientWidth`, table wider than its parent). The page also takes `.storybook/gallery.css` (the three text
+  sizes and the box are classes there) beside `components.css` and `vscode-themes.css`.
+- Item 28's companion is a script mode, `npm run layout-check -- --companion` (CI's `storybook` job runs it), not a unit
+  test, because it needs Chrome; `layoutCheck.test.ts` holds what does not: the gallery's breaking cases, CI's steps,
+  and exit 3 for a `CHROME_PATH` naming nothing (and, on Linux, an empty PATH). `CHROME_PATH` naming nothing is an error,
+  never a fallback to another browser; Windows cannot hide its install paths from a child process, which is why the
+  test is shaped this way.
+- `components.css`: one `@container kit-table` block per width (30 / 40 / 60em); the 30em block also releases the
+  end cells' `nowrap`. A header with no sort button is hidden when stacked with `:not(:has(.kit-table__sort))`
+  (Chromium 105+, which VS Code's webview is). `stack: 'never'` has no block; its class carries `table-layout: auto`
+  so every class a case renders has a rule (`componentsCss.test.ts`).
+- Public surface: the type `StackWidth` is exported (nineteen types); `STACK_WIDTHS` is internal.
+
+**What the break-its found.** One real tripwire gap, fixed RED-first: `architecture.test.ts`' closure walk matched only
+`import ... from '...'` and `export ... from '...'`, so `import '../webview/nonce';` in the components entry passed. The
+walk now reads the side-effect shape (a fixture pins every shape, type-only ones skipped); the break-it then goes RED.
+One scan of mine was weak and its own fixture caught it (`min-width: 100%` slipped past a unit pattern). In the
+browser, with the real stylesheet broken: cells no longer breaking a word turned the check RED for
+`dataTable/unbreakable-cell`; the table no longer a size container turned 25 case renders RED (the same symptom as the
+stylesheet before 4.6a: `the page scrolls sideways: 363px of 300px`).

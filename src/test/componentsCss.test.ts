@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { FakeDocument, type FakeNode } from './fakeDom';
-import { COMPONENTS_CSS, readCss, rules, tokenBlock } from './cssTokens';
+import { COMPONENTS_CSS, containerBlocks, readCss, rules, tokenBlock, type Rule } from './cssTokens';
 import { GALLERY } from './gallery';
 
 /**
@@ -83,4 +83,80 @@ test('every --kit-* theme token reads a --vscode-* variable first — light, dar
   assert.ok(tokens.size >= 15, `only ${tokens.size} tokens found`);
   const notMapped = [...tokens].filter(([, value]) => !/^var\(--vscode-[A-Za-z0-9-]+/.test(value)).map(([name]) => name);
   assert.deepEqual(notMapped, []);
+});
+
+// ---- fit, never scroll (todo/PLAN_kit_components_storybook.md §4.6a, §5.2 item 26) -------------------------------
+
+/** The table width each `stack` value stacks below — the table's OWN width, read through the size container. */
+const STACK_BELOW: Readonly<Record<'narrow' | 'medium' | 'wide', string>> = { narrow: '(max-width: 30em)', medium: '(max-width: 40em)', wide: '(max-width: 60em)' };
+
+/** What `property` is declared as by the rules of `all` whose selector list names `selector` exactly. */
+function declaredOn(all: readonly Rule[], selector: string, property: string): string[] {
+  return all.filter((rule) => rule.selectors.includes(selector)).flatMap((rule) => rule.declarations.get(property) ?? []);
+}
+
+test('.kit-table is a size container, so every width rule reads the box of the table and not the window', () => {
+  assert.deepEqual(declaredOn(rules(CSS), '.kit-table', 'container'), ['kit-table / inline-size']);
+});
+
+test('there is one @container block per stack width, and each stacks only the table carrying its own class', () => {
+  const blocks = containerBlocks(CSS);
+  for (const [stack, condition] of Object.entries(STACK_BELOW)) {
+    const named = blocks.filter((block) => block.name === 'kit-table' && block.condition === condition);
+    assert.equal(named.length, 1, `expected one @container kit-table ${condition}, found ${named.length}`);
+    const inside = (named[0]?.rules ?? []).flatMap((rule) => rule.selectors);
+    assert.ok(inside.some((selector) => selector.startsWith(`.kit-table--stack-${stack} `) || selector === `.kit-table--stack-${stack}`), `nothing in the ${condition} block stacks .kit-table--stack-${stack}`);
+    const others = ['narrow', 'medium', 'wide', 'never'].filter((other) => other !== stack);
+    assert.ok(!inside.some((selector) => others.some((other) => selector.includes(`.kit-table--stack-${other}`))), `the ${condition} block touches another stack width`);
+  }
+  assert.ok(!blocks.some((block) => block.rules.some((rule) => rule.selectors.some((selector) => selector.includes('.kit-table--stack-never')))), 'stack: never must never stack at any width');
+});
+
+test('a stacked cell draws its column header from data-kit-label, the header row becomes sort buttons after "Sort by", and a plain header is hidden', () => {
+  for (const [stack, condition] of Object.entries(STACK_BELOW)) {
+    const inside = containerBlocks(CSS).find((block) => block.condition === condition)?.rules ?? [];
+    const cell = inside.filter((rule) => rule.selectors.some((selector) => selector.startsWith(`.kit-table--stack-${stack} `) && selector.endsWith('td[data-kit-label]::before')));
+    assert.equal(cell.length, 1, `${stack}: no rule draws the label`);
+    assert.equal(cell[0]?.declarations.get('content'), "attr(data-kit-label) ': '");
+    const sortBy = inside.filter((rule) => rule.selectors.some((selector) => selector.startsWith(`.kit-table--stack-${stack} `) && selector.endsWith('tr::before')));
+    assert.equal(sortBy[0]?.declarations.get('content'), "'Sort by'", `${stack}: the Sort by words are missing`);
+    const plain = inside.filter((rule) => rule.selectors.some((selector) => selector.includes(`.kit-table--stack-${stack} `) && selector.includes(':not(:has(.kit-table__sort))')));
+    assert.equal(plain[0]?.declarations.get('display'), 'none', `${stack}: a header without a sort button stays visible when stacked`);
+  }
+});
+
+test('a header breaks only between words, a cell may break anywhere, and an end cell stays on one line only while the table is wider than 30em', () => {
+  const all = rules(CSS);
+  assert.deepEqual(declaredOn(all, '.kit-table__head', 'overflow-wrap'), ['break-word']);
+  assert.deepEqual(declaredOn(all, '.kit-table__cell', 'overflow-wrap'), ['anywhere']);
+  assert.deepEqual(declaredOn(all, '.kit-table__cell--end', 'white-space'), ['nowrap', 'normal'], 'nowrap, then released inside the 30em block');
+  const narrow = containerBlocks(CSS).find((block) => block.condition === STACK_BELOW.narrow)?.rules ?? [];
+  assert.deepEqual(declaredOn(narrow, '.kit-table__cell--end', 'white-space'), ['normal']);
+});
+
+/** The declarations that would make a box scroll sideways or force a width: found by name and value, in any rule. */
+function widthForcing(css: string): string[] {
+  return rules(css).flatMap((rule) => [...rule.declarations].flatMap(([property, value]) => {
+    const scrolls = (property === 'overflow-x' || property === 'overflow') && /\b(auto|scroll)\b/.test(value);
+    const forced = property === 'min-width' && /\d(?:px|em|rem|ch|vw|vh|cm|mm|in|pt|pc|%)|max-content|calc\(/.test(value) && !/^0(?!\.)/.test(value);
+
+    return scrolls || forced ? [`${rule.selectors.join(', ')} { ${property}: ${value} }`] : [];
+  }));
+}
+
+test('no rule makes any box scroll sideways or forces a minimum width: a table fits its box', () => {
+  assert.deepEqual(widthForcing(CSS), []);
+});
+
+test('the width-forcing scan finds each construct in a fixture, and lets min-width: 0 through', () => {
+  assert.equal(widthForcing('.a { overflow-x: auto; } .b { overflow: scroll; } .c { min-width: 40em; } .d { min-width: 100%; }').length, 4);
+  assert.deepEqual(widthForcing('.a { min-width: 0; overflow: hidden; } .b { overflow-x: visible; }'), []);
+});
+
+test('the container-block reader finds a block, its condition and its rules', () => {
+  const found = containerBlocks('.x { a: b; } @container kit-table (max-width: 30em) { .y { c: d; } .z, .w { e: f; } }');
+  assert.equal(found.length, 1);
+  assert.equal(found[0]?.name, 'kit-table');
+  assert.equal(found[0]?.condition, '(max-width: 30em)');
+  assert.deepEqual(found[0]?.rules.map((rule) => rule.selectors), [['.y'], ['.z', '.w']]);
 });

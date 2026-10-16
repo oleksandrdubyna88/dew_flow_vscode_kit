@@ -51,6 +51,17 @@ export interface DataTableSort {
   readonly direction: SortDirection;
 }
 
+/**
+ * The table's own width below which each row stacks as "label: value" lines (`components.css` reads it through the
+ * table's size container): `narrow` below 30em, `medium` 40em, `wide` 60em, `never` at no width. A table never scrolls
+ * sideways whichever is chosen — `never` leaves it a table whose columns shrink and wrap.
+ */
+export const STACK_WIDTHS = ['narrow', 'medium', 'wide', 'never'] as const;
+
+export type StackWidth = (typeof STACK_WIDTHS)[number];
+
+const DEFAULT_STACK: StackWidth = 'medium';
+
 export interface DataTableOptions<Row> {
   /** The table's accessible name. */
   readonly label: string;
@@ -65,6 +76,8 @@ export interface DataTableOptions<Row> {
   readonly countText?: (shown: number, total: number) => string;
   /** The order at first. */
   readonly sort?: DataTableSort;
+  /** Below which width OF THE TABLE rows stack as "label: value" lines; `medium` when absent. */
+  readonly stack?: StackWidth;
 }
 
 export interface DataTableView<E, Row> {
@@ -147,7 +160,7 @@ function checked<Row>(options: DataTableOptions<Row>): DataTableOptions<Row> {
     checkedSort(columns, options.sort.key, options.sort.direction);
   }
 
-  return options;
+  return { ...options, stack: oneOf(options.stack ?? DEFAULT_STACK, STACK_WIDTHS, 'DataTable stack') };
 }
 
 function checkedRows<Row>(rows: readonly Row[]): readonly Row[] {
@@ -191,7 +204,7 @@ function rowView<E extends KitElement<E>, Row>(doc: KitDocument<E>, options: Dat
   const values = options.columns.map((column) => cellValue(column, row));
   const texts = options.columns.map((column, at) => shown(column, values[at] ?? null, row));
   const tr = attributes(element(doc, 'tr', 'kit-table__row'), { 'data-kit-row': String(index) });
-  options.columns.forEach((column, at) => { tr.appendChild(element(doc, 'td', cellClass(column), texts[at])); });
+  options.columns.forEach((column, at) => { tr.appendChild(attributes(element(doc, 'td', cellClass(column), texts[at]), { 'data-kit-label': column.header })); });
   const revealCell = options.reveal === undefined ? undefined : revealCellOf(doc, options.reveal, row, index);
   if (revealCell !== undefined) {
     tr.appendChild(revealCell);
@@ -207,7 +220,7 @@ function revealCellOf<E extends KitElement<E>, Row>(doc: KitDocument<E>, reveal:
   });
   button.addEventListener('click', () => { reveal.onReveal(index); });
 
-  return children(element(doc, 'td', 'kit-table__reveal'), button);
+  return children(attributes(element(doc, 'td', 'kit-table__reveal'), { 'data-kit-label': reveal.header }), button);
 }
 
 /** A header: a sort button inside a `th scope=col aria-sort=none`, or plain text for a column that does not sort. */
@@ -241,9 +254,16 @@ function tableOf<E extends KitElement<E>, Row>(doc: KitDocument<E>, options: Dat
     headRow.appendChild(attributes(element(doc, 'th', 'kit-table__head', options.reveal.header), { scope: 'col' }));
   }
   const tbody = element(doc, 'tbody', 'kit-table__body');
-  const table = attributes(element(doc, 'table', 'kit-table__grid'), { 'aria-label': options.label });
+  const table = gridOf(doc, options);
 
   return { table: children(table, children(element(doc, 'thead', 'kit-table__header'), headRow), tbody), tbody, heads };
+}
+
+/** The empty `table`, carrying its accessible name and the class that picks its stacked layout. */
+function gridOf<E extends KitElement<E>, Row>(doc: KitDocument<E>, options: DataTableOptions<Row>): E {
+  const stack = options.stack ?? DEFAULT_STACK;
+
+  return attributes(element(doc, 'table', `kit-table__grid kit-table--stack-${stack}`), { 'aria-label': options.label });
 }
 
 /** The search box and its status line, when the consumer asked for a search. */

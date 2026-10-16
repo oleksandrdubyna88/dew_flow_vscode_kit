@@ -100,14 +100,14 @@ const COMPONENT_TYPES: readonly string[] = [
   'StatusMark', 'StatusTone',
   'TabSpec', 'TabsOptions', 'TabsView',
   'CellValue', 'SortDirection',
-  'DataColumn', 'DataTableOptions', 'DataTableReveal', 'DataTableSort', 'DataTableView',
+  'DataColumn', 'DataTableOptions', 'DataTableReveal', 'DataTableSort', 'DataTableView', 'StackWidth',
   'RecommendationOptions',
 ];
 
 /** Names inside the components that must NOT be public: the checks, the DOM helpers, the order's internals. */
 const COMPONENT_INTERNAL: readonly string[] = [
   'KIT_TAGS', 'KIT_ATTRIBUTES', 'KIT_EVENTS', 'element', 'attributes', 'children', 'valueOf', 'writeValue',
-  'text', 'id', 'oneOf', 'checkedMark', 'markElement', 'toneGlyph', 'sortedIndexes', 'compareCells', 'matchesQuery',
+  'text', 'id', 'oneOf', 'checkedMark', 'markElement', 'toneGlyph', 'sortedIndexes', 'compareCells', 'matchesQuery', 'STACK_WIDTHS',
 ];
 
 /** The type names an index file's export lists spell — both `export type { … }` and `type X` entries. */

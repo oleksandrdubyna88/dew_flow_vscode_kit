@@ -108,7 +108,8 @@ const PAGE_MODULES: readonly string[] = ['src/help/page.ts', 'src/help/messages.
  * compiler and bring nothing, so they are skipped.
  */
 function runtimeImportsOf(file: string, text: string): string[] {
-  const statements = text.matchAll(/^\s*(?:import|export)\s+(type\s+)?[^;]*?\bfrom\s+['"](\.{1,2}\/[^'"]+)['"]/gms);
+  // `from` is optional: `import './effect';` brings a module with no binding, and it runs.
+  const statements = text.matchAll(/^\s*(?:import|export)\s+(type\s+)?(?:[^;]*?\bfrom\s+)?['"](\.{1,2}\/[^'"]+)['"]/gms);
 
   return [...statements]
     .filter(([, typeOnly]) => typeOnly === undefined)
@@ -142,6 +143,49 @@ test('no module a page is rendered by reaches a host module through its imports 
 test('the closure walk finds the known host reach: the panel mints its nonce, and the index re-exports it', () => {
   assert.ok(closureOf('src/help/panel.ts').has('src/webview/nonce.ts'));
   assert.ok(closureOf('src/index.ts').has('src/webview/nonce.ts'));
+});
+
+test('the closure walk reads EVERY run-time import shape — a side-effect import and a multi-line list included — and skips the type-only ones', () => {
+  const fixture = [
+    "import { a } from './a';",
+    "import './effect';",
+    "export * from './star';",
+    "export { b } from '../up/b';",
+    "import type { T } from './types';",
+    "export type { U } from './types2';",
+    'import {',
+    '  c,',
+    "} from './multi';",
+    "import 'not-relative';",
+  ].join('\n');
+
+  assert.deepEqual(runtimeImportsOf('src/components/x.ts', fixture), [
+    'src/components/a.ts', 'src/components/effect.ts', 'src/components/star.ts', 'src/up/b.ts', 'src/components/multi.ts',
+  ]);
+});
+
+// ---------------------------------------------------------------------------------------------------
+// The components entry (`todo/PLAN_kit_components_storybook.md` §4.2): it is bundled by a consumer FOR THE BROWSER,
+// so its whole run-time closure must stay inside `src/components/` — no host module, no `node:`, nothing of the root
+// entry (which reaches `nonce.ts`). The root entry keeps reaching `nonce.ts`, which is the known instance above.
+// ---------------------------------------------------------------------------------------------------
+
+const COMPONENTS_ENTRY = 'src/components/index.ts';
+
+test('the components entry\'s run-time closure stays inside src/components/ and reaches no host module', () => {
+  const closure = [...closureOf(COMPONENTS_ENTRY)];
+  const outside = closure.filter((file) => !file.startsWith('src/components/'));
+
+  assert.deepEqual(outside, [], `the components entry reaches ${outside.join(', ')}`);
+  assert.ok(closure.includes('src/components/dataTable.ts') && closure.includes('src/components/tableOrder.ts'), `the walk did not follow the entry: ${closure.join(', ')}`);
+});
+
+test('every component module is a page module: none of them imports vscode or node:, even one hop away', () => {
+  const files = tsFilesUnder(path.join(SRC, 'components')).map(fromRoot);
+  assert.ok(files.length >= 7, `only ${files.length} component modules found`);
+  const findings = files.flatMap((file) => [...closureOf(file)].filter((reached) => HOST_ALLOWLIST.includes(reached)).map((reached) => `${file} reaches ${reached}`));
+
+  assert.deepEqual(findings, []);
 });
 
 test('the import reader takes multi-line, export-from and relative-parent imports, and skips type-only ones', () => {

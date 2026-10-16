@@ -1,7 +1,7 @@
 {
   "name": "@oleksandrdubyna88/vscode-webview-kit",
   "version": "0.1.0",
-  "description": "Shared webview building blocks for the dew_flow VS Code extensions: a help page with languages and stale-translation detection, the ± text size and ± text tone controls with their host halves, the setting-write reporter, and the HTML/JSON escapers a webview page needs.",
+  "description": "Shared webview building blocks for the dew_flow VS Code extensions: a help page with languages and stale-translation detection, the ± text size and ± text tone controls with their host halves, the setting-write reporter, the HTML/JSON escapers a webview page needs, and webview components (tabs, a data table, a recommendation card) with theme tokens.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -15,7 +15,13 @@
       "types": "./dist/index.d.ts",
       "require": "./dist/index.js",
       "default": "./dist/index.js"
-    }
+    },
+    "./components": {
+      "types": "./dist/components/index.d.ts",
+      "require": "./dist/components/index.js",
+      "default": "./dist/components/index.js"
+    },
+    "./components.css": "./dist/components/components.css"
   },
   "files": [
     "dist",
@@ -24,27 +30,38 @@
   "bin": {
     "vscode-webview-kit-help-digests": "scripts/help-digests.mjs"
   },
-  "sideEffects": false,
+  "sideEffects": [
+    "*.css"
+  ],
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.storybook.json",
     "compile": "node scripts/clean.mjs out && tsc -p tsconfig.json",
     "test": "npm run compile && node scripts/run-tests.mjs",
-    "build": "node scripts/clean.mjs dist && tsc -p tsconfig.build.json",
+    "build": "node scripts/clean.mjs dist && tsc -p tsconfig.build.json && node scripts/copy-css.mjs",
     "prepack": "npm run build",
     "pack-and-consume": "node scripts/pack-and-consume.mjs",
     "lint": "eslint .",
-    "prepublishOnly": "npm run build && npm test"
+    "prepublishOnly": "npm run build && npm test",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build -o storybook-static",
+    "layout-check": "node scripts/layout-check.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@storybook/addon-a11y": "10.6.0",
+    "@storybook/html-vite": "10.6.0",
     "@types/node": "^26.6.2",
+    "axe-core": "4.13.0",
     "esbuild": "^0.28.2",
     "eslint": "^10.11.0",
     "globals": "^17.12.0",
+    "jsdom": "30.1.1",
+    "storybook": "10.6.0",
     "typescript": "6.0.3",
-    "typescript-eslint": "^8.70.0"
+    "typescript-eslint": "^8.70.0",
+    "vite": "8.3.1"
   }
 }

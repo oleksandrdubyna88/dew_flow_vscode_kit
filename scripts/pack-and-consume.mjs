@@ -50,7 +50,7 @@
  * 2 usage.
  */
 import { spawnSync } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -66,7 +66,18 @@ const MANIFEST = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
 const CHILD_TIMEOUT_MS = 180_000;
 /** What npm packs whatever `files` says. */
 const NPM_ALWAYS = ['package.json', 'README.md', 'LICENSE'];
-const REQUIRED = ['dist/index.js', 'dist/index.d.ts'];
+/**
+ * Every file the manifest's `exports` names (`./dist/index.js`, `./dist/components/components.css`, …) — what the
+ * tarball must carry, derived from the manifest rather than retyped (E18.K1 added the components entry and its CSS).
+ */
+function exported(value = MANIFEST.exports) {
+  if (typeof value === 'string') {
+    return [value.replace(/^\.\//, '')];
+  }
+
+  return Object.values(value ?? {}).flatMap((entry) => exported(entry));
+}
+const REQUIRED = [...new Set(exported())];
 const FRESH = 'help-digests: every translation was made from the current English.';
 const MISSPELT = { from: 'createDisplayHost', to: 'createDisplayHots' };
 
@@ -170,9 +181,9 @@ function contentsStep(ctx) {
   if (unexpected.length > 0) {
     fail(`the tarball carries files nobody meant to ship: ${unexpected.join(', ')}`);
   }
-  const strayDist = paths.filter((path) => path.startsWith('dist/') && !path.endsWith('.js') && !path.endsWith('.d.ts'));
+  const strayDist = paths.filter((path) => path.startsWith('dist/') && !path.endsWith('.js') && !path.endsWith('.d.ts') && !REQUIRED.includes(path));
   if (strayDist.length > 0) {
-    fail(`dist/ in the tarball holds more than .js and .d.ts: ${strayDist.join(', ')}`);
+    fail(`dist/ in the tarball holds more than .js, .d.ts and the files exports names: ${strayDist.join(', ')}`);
   }
 
   return `${paths.length} files, ${paths.filter((path) => path.startsWith('dist/')).length} under dist/`;
@@ -209,6 +220,7 @@ function installStep(ctx) {
 function typecheckStep(ctx) {
   const tsc = join(dirname(repoRequire.resolve('typescript/package.json')), 'bin', 'tsc');
   node([tsc, '-p', 'tsconfig.json'], ctx.consumer, 'tsc over the fixture');
+  node([tsc, '-p', 'tsconfig.webview.json'], ctx.consumer, 'tsc over the fixture\'s webview entry, with the DOM library');
 
   return `typescript ${repoRequire('typescript/package.json').version}`;
 }
@@ -222,36 +234,44 @@ function foreignInputs(consumer, metafile) {
   });
 }
 
-async function bundleStep(ctx) {
+/** One esbuild run over the copy; refused when esbuild refuses or an input lies outside the copy. */
+async function bundleOnce(ctx, what, options) {
   const esbuild = repoRequire('esbuild');
   let result;
   try {
-    result = await esbuild.build({
-      absWorkingDir: ctx.consumer,
-      entryPoints: { extension: 'src/extension.ts', helpCatalog: 'src/helpCatalog.ts' },
-      outdir: 'dist',
-      bundle: true,
-      external: ['vscode'],
-      format: 'cjs',
-      platform: 'node',
-      metafile: true,
-      logLevel: 'silent',
-    });
+    result = await esbuild.build({ absWorkingDir: ctx.consumer, outdir: 'dist', bundle: true, metafile: true, logLevel: 'silent', ...options });
   } catch (error) {
-    fail(`esbuild refused the fixture: ${error.message}`);
+    fail(`esbuild refused the fixture's ${what}: ${error.message}`);
   }
   const foreign = foreignInputs(ctx.consumer, result.metafile);
   if (foreign.length > 0) {
-    fail(`the bundle read files outside the consumer copy: ${foreign.join(', ')}`);
+    fail(`the ${what} bundle read files outside the consumer copy: ${foreign.join(', ')}`);
   }
 
-  return `esbuild ${esbuild.version}, ${Object.keys(result.metafile.inputs).length} inputs`;
+  return Object.keys(result.metafile.inputs).length;
+}
+
+async function bundleStep(ctx) {
+  // The extension host's bundle, with the extensions' flags.
+  const host = await bundleOnce(ctx, 'extension', {
+    entryPoints: { extension: 'src/extension.ts', helpCatalog: 'src/helpCatalog.ts' }, external: ['vscode'], format: 'cjs', platform: 'node',
+  });
+  // The WEBVIEW's bundle (E18.K1): the components and their stylesheet from the package's subpaths, for the browser —
+  // esbuild refuses a `node:` import on this platform, so a components entry that reached one fails here; the CSS is
+  // emitted beside the JS as dist/webview.css and must be there.
+  const webview = await bundleOnce(ctx, 'webview', { entryPoints: { webview: 'src/webview.ts' }, format: 'iife', platform: 'browser' });
+  if (!existsSync(join(ctx.consumer, 'dist', 'webview.css'))) {
+    fail('the webview bundle emitted no dist/webview.css — the components.css import did not reach the bundle');
+  }
+
+  return `esbuild ${repoRequire('esbuild').version}, ${host} inputs for the extension, ${webview} for the webview and its CSS`;
 }
 
 function runStep(ctx) {
   const result = node(['run.mjs', join('dist', 'extension.js')], ctx.consumer, 'the bundle under the vscode stub');
+  const webview = node(['run-webview.mjs', join('dist', 'webview.js'), join('dist', 'webview.css')], ctx.consumer, 'the webview bundle with only a document');
 
-  return result.stdout.trim().replace(/^consumer-fixture: ok — /, '');
+  return `${result.stdout.trim().replace(/^consumer-fixture: ok — /, '')}; ${webview.stdout.trim().replace(/^consumer-fixture webview: ok — /, '')}`;
 }
 
 function binStep(ctx) {

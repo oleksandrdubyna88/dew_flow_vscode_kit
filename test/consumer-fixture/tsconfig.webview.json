@@ -1,0 +1,11 @@
+{
+  // The consumer's WEBVIEW entry, type-checked as a webview script is: the same strict set as tsconfig.json, plus
+  // the DOM library, against the INSTALLED package's `./components` subpath (`node16` reads the `exports` map and
+  // its `types` condition). This is the check that a real `Document` satisfies the kit's DOM port with no cast.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": ["src/webview.ts", "src/css.d.ts"],
+  "exclude": []
+}

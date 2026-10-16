@@ -18,7 +18,7 @@ import { listAt, mapAt, parseWorkflow } from './workflowYaml';
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const read = (file: string): unknown => JSON.parse(fs.readFileSync(path.join(ROOT, file), 'utf8'));
-const MANIFEST = read('package.json') as { name: string; version: string; repository: { url: string } };
+const MANIFEST = read('package.json') as { name: string; version: string; repository: { url: string }; publishConfig?: { registry?: string } };
 
 interface Section {
   readonly type: string;
@@ -110,7 +110,15 @@ test('a manifest names a version only together with release-please\'s CHANGELOG.
 test('the package release-please releases is the one package.json describes, from this repository', () => {
   assert.equal(MANIFEST.name, '@oleksandrdubyna88/vscode-webview-kit');
   assert.equal(MANIFEST.repository.url, 'https://github.com/oleksandrdubyna88/dew_flow_vscode_kit',
-    'npm checks a provenance statement against repository.url — it must name the repository release.yml runs in');
+    'GitHub Packages links a package to the repository through repository.url — it must name the repository release.yml runs in');
+});
+
+test('a publish goes to GitHub Packages, and the package scope is the owner of the repository — the only scope GitHub Packages accepts', () => {
+  const owner = /^https:\/\/github\.com\/([^/]+)\/[^/]+$/.exec(MANIFEST.repository.url)?.[1];
+
+  assert.notEqual(owner, undefined, `repository.url is not https://github.com/<owner>/<repo>: ${MANIFEST.repository.url}`);
+  assert.equal(MANIFEST.publishConfig?.registry, 'https://npm.pkg.github.com', 'publishConfig.registry must send a publish to GitHub Packages');
+  assert.equal(MANIFEST.name.split('/')[0], `@${String(owner)}`, 'GitHub Packages only takes a scope equal to the owner');
 });
 
 test('a commit touching only .github is never a release, and exclude-paths holds directories only', () => {

@@ -159,3 +159,16 @@ test('pack-and-consume --published needs one <major>.<minor>.<patch> version, fr
     assert.equal(run.stdout, '', 'no step may have started');
   }
 });
+
+test('pack-and-consume --published with an empty NODE_AUTH_TOKEN exits 2 naming both token kinds, before any step', () => {
+  // GitHub Packages serves nothing without a token, so a run that cannot have one stops here and says what to
+  // set — not at an "npm pack" step that fails with a 401 nobody can read.
+  const run = spawnSync(process.execPath, [PACK_AND_CONSUME, '--published', '0.1.1'], { cwd: ROOT, encoding: 'utf8', timeout: 30_000, env: { ...process.env, TARGET: '', NODE_AUTH_TOKEN: '' } });
+
+  assert.equal(run.status, 2, `${run.stdout}${run.stderr}`);
+  assert.match(run.stderr, /NODE_AUTH_TOKEN is empty/);
+  assert.match(run.stderr, /packages: read/);
+  assert.match(run.stderr, /read:packages/);
+  assert.doesNotMatch(run.stdout, /pack-and-consume: ok/, 'no step may have run');
+  assert.equal(run.stdout, '', 'nothing may be on stdout');
+});

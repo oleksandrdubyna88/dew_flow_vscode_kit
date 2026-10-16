@@ -7,6 +7,9 @@
     "type": "git",
     "url": "https://github.com/oleksandrdubyna88/dew_flow_vscode_kit"
   },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
   "type": "commonjs",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

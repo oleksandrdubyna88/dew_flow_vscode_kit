@@ -1,11 +1,12 @@
 # Post-deploy checks — dew_flow_vscode_kit
 
-Target: the package as npmjs serves it — `@oleksandrdubyna88/vscode-webview-kit`; `$TARGET` is the version just released, without the `v` (`0.1.0`). Run from a checkout of that version's tag: `node .agents/conventions/tools/post-deploy-check.mjs --target 0.1.0 --timeout 300000`. `release.yml` runs the same four commands right after it publishes; this file is how a person runs them afterwards and records what they watched.
-Last verified: never, as of 2026-10-02 — nothing is published yet.
+Target: the package as GitHub Packages serves it — `@oleksandrdubyna88/vscode-webview-kit`; `$TARGET` is the version just released, without the `v` (`0.1.1`). Run from a checkout of that version's tag: `node .agents/conventions/tools/post-deploy-check.mjs --target 0.1.1 --timeout 300000`. GitHub Packages serves nothing without a token, so the commands need `NODE_AUTH_TOKEN` set to a personal access token (classic) with `read:packages`, and a `gh` login that has `read:packages` too (`gh auth refresh -s read:packages`). `release.yml` runs items 1, 2, 3 and 5 right after it publishes, with the job's own token (item 4 needs `read:packages` on the REST call, so a person runs it); this file is how a person runs all five afterwards and records what they watched.
+Last verified: never, as of 2026-10-16 — 0.1.0 never reached a registry; 0.1.1 is the first publish.
 
 | # | What a person loses if this is broken | Check | Auto |
 |---|---|---|---|
 | 1 | A consumer installs a version that is not the one released — the registry does not serve it | `node scripts/verify-published.mjs --check version` | auto |
-| 2 | A consumer cannot trace the package to this repository's `release.yml` at the release tag, or the served bytes are not the ones the provenance is about | `node scripts/verify-published.mjs --check provenance` | auto |
-| 3 | npm cannot verify the registry signature and the attestation of what a consumer installs | `node scripts/verify-published.mjs --check signatures` | auto |
-| 4 | A consumer gets a package without its compiled code or types, or one that does not type-check, bundle and run inside an extension | `node scripts/pack-and-consume.mjs --published` | auto |
+| 2 | A consumer installs bytes that are not the ones the registry advertises — the served tarball's sha512 is not the packument's `dist.integrity` | `node scripts/verify-published.mjs --check integrity` | auto |
+| 3 | A consumer cannot trace the package to this repository's `release.yml` at the release tag — the served bytes carry no attestation of that identity on a GitHub-hosted runner | `node scripts/verify-published.mjs --check attestation` | auto |
+| 4 | A consumer cannot install the package without being granted access — the package is not public (the owner's one click: the package page → Package settings → Danger Zone → Change visibility → Public, irreversible) | `node scripts/verify-published.mjs --check visibility` | auto |
+| 5 | A consumer gets a package without its compiled code or types, or one that does not type-check, bundle and run inside an extension | `node scripts/pack-and-consume.mjs --published` | auto |

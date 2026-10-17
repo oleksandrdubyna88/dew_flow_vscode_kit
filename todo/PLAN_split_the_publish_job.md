@@ -18,11 +18,19 @@ other bytes, or sign an attestation for bytes it chose.
 
 Goal — what must be true when this plan is done:
 
-1. **The job that holds `packages: write`, `id-token: write` or `attestations: write` runs no dependency code**:
-   no `npm ci` / `npm install` / `npm test` / `npm run` / `npm pack` / `npm exec` / `npx`, no `cache:`, nothing
-   from `node_modules`. It runs only node built-ins and this repository's own scripts (`publish-once.mjs`,
-   `verify-published.mjs`, `lib/npm.mjs` — node built-ins, the npm CLI that ships with node, and `gh`), the
-   attest action, and `sha256sum`.
+1. **The job that holds `packages: write`, `id-token: write` or `attestations: write` runs no dependency code**,
+   enforced as ALLOWLISTS rather than a list of forbidden commands (plan round, findings 5 and 7): every `run` in
+   such a job is one of three shapes — the artifact check, `node scripts/publish-once.mjs "$TARBALL"`,
+   `node scripts/verify-published.mjs --tarball "$TARBALL" …` — every `uses` is one of `actions/checkout`,
+   `actions/setup-node` (no `cache`), `actions/download-artifact`, `actions/attest-build-provenance`, and the two
+   scripts' static import closure is node built-ins plus relative files inside the checked-out cone
+   (`scripts/publish-once.mjs`, `scripts/verify-published.mjs`, `scripts/lib/npm.mjs` — finding 12). They spawn
+   only the npm CLI that ships with node (for `view`, a registry-spec `pack` and `publish`) and `gh`.
+
+   **What this does NOT buy** (finding 6, said plainly): a compromised devDependency running in `build` can still
+   choose the bytes it packs, and the attestation will then truthfully say "built by release.yml at the tag". The
+   split takes the publish token and the signing identity away from dependency code; it does not make the build
+   trustworthy. The defences for the build stay what they are: the lockfile, `npm ci`, and the pre-publish tests.
 2. **The bytes are made in an unprivileged job** (`build`: `contents: read` only): the guard again, `npm ci`,
    `npm test`, ONE `npm pack`, a `.sha256` beside it, both uploaded as one artifact.
 3. **The privileged job (`publish`) works on exactly those bytes**: it downloads the artifact, checks the
@@ -59,8 +67,8 @@ object and the job already holds both permissions only for that.
 |---|---|---|---|
 | `guard` | — | `contents: read` | unchanged |
 | `pack-and-consume` | guard | `contents: read` | unchanged (reusable; the pre-publish check on both OSes) |
-| `build` (new) | guard | `contents: read` | checkout of the tag (full history, no credentials) → setup-node (no `registry-url`, no `cache`) → the guard again → `npm ci` → `npm test` → `id: pack`: ONE `npm pack --pack-destination "$RUNNER_TEMP/release"`, exactly one `.tgz`, `sha256sum` into `<tgz>.sha256`, `tarball=<basename>` to `$GITHUB_OUTPUT` → upload-artifact `name: release-tarball`, `path: ${{ runner.temp }}/release/`, `if-no-files-found: error`, `retention-days: 7`; job `outputs.tarball` |
-| `publish` | guard, pack-and-consume, build | `contents: read`, `packages: write`, `id-token: write`, `attestations: write`; `environment: npm` | checkout with `sparse-checkout: scripts` (cone mode brings the root `package.json`), no credentials → setup-node as today (`registry-url`, `scope`, no `cache`) → download-artifact `release-tarball` into `from-build` → `id: tarball`: `cd from-build && sha256sum -c "$TARBALL.sha256"` (env `TARBALL: ${{ needs.build.outputs.tarball }}`), and `path=<abs path>` to `$GITHUB_OUTPUT` → attest `subject-path: ${{ steps.tarball.outputs.path }}` → `node scripts/publish-once.mjs "$TARBALL"` → `node scripts/verify-published.mjs --tarball "$TARBALL" --check version --check integrity --check attestation` (both with `TARBALL: ${{ steps.tarball.outputs.path }}`, tokens as today) |
+| `build` (new) | guard | `contents: read` | checkout of the tag (full history, no credentials) → setup-node (no `registry-url`, no `cache`) → the guard again → `npm ci` → `npm test` → `id: pack`: ONE `npm pack --pack-destination "$RUNNER_TEMP/release"`, exactly one `.tgz`, `sha256sum` into `<tgz>.sha256`, `tarball=<basename>` to `$GITHUB_OUTPUT` → upload-artifact `name: release-tarball`, `path: ${{ runner.temp }}/release/`, `if-no-files-found: error`, `retention-days: 30` (GitHub's re-run window is 30 days, so a "Re-run failed jobs" inside it always finds the artifact — findings 0, 8, 14); job `outputs.tarball` |
+| `publish` | guard, pack-and-consume, build | `contents: read`, `packages: write`, `id-token: write`, `attestations: write`; `environment: npm` | checkout with `sparse-checkout: scripts` (cone mode brings the root `package.json`), no credentials → setup-node as today (`registry-url`, `scope`, no `cache`) → download-artifact `release-tarball` into `from-build` → `id: tarball`, `working-directory: from-build`: `sha256sum -c "$TARBALL.sha256"` (env `TARBALL: ${{ needs.build.outputs.tarball }}`), then `path=$GITHUB_WORKSPACE/from-build/$TARBALL` to `$GITHUB_OUTPUT` (finding 11) — a CORRUPTION check of the round trip, redundant with the artifact service's own and NOT a provenance bind: the digest travels with the tarball from the same job (finding 15); what binds the published bytes to the attested ones is `verify --check integrity` → attest `subject-path: ${{ steps.tarball.outputs.path }}` → `node scripts/publish-once.mjs "$TARBALL"` → `node scripts/verify-published.mjs --tarball "$TARBALL" --check version --check integrity --check attestation` (both with `TARBALL: ${{ steps.tarball.outputs.path }}`, tokens as today) |
 | `consume` (new) | guard, publish | `contents: read`, `packages: read` | checkout → setup-node → `npm ci` → `node scripts/pack-and-consume.mjs --published` with `NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}`, `TARGET: ${{ needs.guard.outputs.version }}` |
 
 `publish-once.mjs` already refuses a tarball whose basename is not `npm pack`'s name for the tag's `package.json`,
@@ -70,12 +78,19 @@ so a stray file in the artifact cannot be published in its place.
 
 New, each written and observed RED against `ca79071` before the workflow changes:
 
-- **H1 — no privileged job runs dependency code.** For EVERY workflow and EVERY job whose permissions grant any of
-  `packages: write`, `id-token: write`, `attestations: write`: no step `run` matches
-  `/\bnpm\s+(ci|install|i|test|t|run|run-script|pack|exec|x)\b|\bnpx\b|\byarn\b|\bpnpm\b|node_modules/`, and no
-  `setup-node` step has `cache`. RED today: `release.yml publish runs dependency code: Install, Test, Pack once …`.
-- **H1b — the scan still finds what it forbids** (the companion of a structural test): the `build` job's runs DO
-  match that pattern (`npm ci`, `npm test`, `npm pack`) — so the pattern is alive. RED today: no `build` job.
+- **H1 — a privileged job runs only allowlisted steps.** For EVERY workflow and EVERY job whose permissions grant
+  any of `packages: write`, `id-token: write`, `attestations: write`: every `run` matches one of the three allowed
+  shapes (goal 1), every `uses` is one of the four allowed actions (by name, before the `@`), and no `setup-node`
+  step has `cache`. RED today: `release.yml publish runs steps outside the allowlist: Install, Test, Pack once …`.
+- **H1b — a dependency-command pattern still matches the build** (the companion of a structural test): the
+  `build` job's runs DO match `/\bnpm\s+(ci|test|pack)\b/` — so the allowlist is not vacuously satisfied by a
+  workflow that builds nothing anywhere. RED today: no `build` job.
+- **H4b — the privileged scripts' import closure stays inside the cone.** Starting from `scripts/publish-once.mjs`
+  and `scripts/verify-published.mjs`, every static `import … from '<spec>'` (and `import('<spec>')`) is a `node:`
+  built-in or a relative path that resolves to a file under one of the publish job's `sparse-checkout` entries,
+  recursively. Its companion asserts the walk reached `scripts/lib/npm.mjs`. RED today: the publish job has no
+  `sparse-checkout`.
+- **H2b — the artifact outlives the re-run window:** the upload step's `retention-days` is at least 30.
 - **H2 — the bytes are made unprivileged:** the `build` job's permissions are exactly `{ contents: read }`; it holds
   the ONE `npm pack` of the whole workflow (`id: pack`), writes the `.sha256` and `tarball=` output, and its
   upload-artifact step uses `actions/upload-artifact@<40 hex>` with `if-no-files-found: error` and a
@@ -105,6 +120,9 @@ Also: `actionlint` (1.7.12, with shellcheck) over every workflow; typecheck, lin
 
 What the suite cannot prove: that the artifact round trip works on a real runner (first observed at the next
 release), and anything about what a devDependency would do — only that none runs in the privileged job.
+**Residual, accepted (finding 13 rejected):** no rehearsal release is made — it would leave a permanent extra
+version in a public registry and needs the guard loosened. A wiring mistake the tests and actionlint cannot see
+stops the next release at or before its publish, and is fixed forward like any failed publish.
 
 ## 5. Docs
 
@@ -121,12 +139,28 @@ It is never a rollback source: the registry is.
 
 ## 7. Build order
 
-1. H1–H5 and the re-stated A-tests, RED, recorded. 2. `release.yml`. 3. GREEN + actionlint + whole suite.
-4. Break-its. 5. Docs. 6. Code round, PR (`ci:` title), merge with every check green.
+1. H1–H5 (with H1b, H2b, H4b) and the re-stated A-tests, RED, recorded. 2. `release.yml`. 3. GREEN + actionlint
++ whole suite. 4. Break-its. 5. Docs, `todo/README.md` row, `node .agents/conventions/tools/plan-lifecycle.mjs`
+(finding 10). 6. Code round, PR (`ci:` title), merge with every check green. 7. At completion, the plan is
+promoted to `research/` (status `IMPLEMENTED <date>`, deviations, `todo/README.md` and `research/README.md`) —
+when its first real release run has been observed, since that is the one thing the suite cannot prove.
+
+## 9. Plan round (coai session `bf5963e8`, 2026-10-17)
+
+Verdict `good_enough` (gating 12 of threshold 6; all 4 reviewers answered). Accepted: artifact retention 30 days
+(findings 0, 8, 14); allowlists for the privileged job's runs and actions instead of a forbidden-command list (5,
+7); the honest limit of the split (6); the scripts' import closure checked in the suite (3, 12); plan lifecycle
+in the build order (10); the artifact path built from `$GITHUB_WORKSPACE` (11); the `.sha256` described as a
+corruption check, not a bind (15). Rejected: narrowing H1 to release.yml (1 — no other workflow holds those
+permissions, so all-workflows is free and stronger); "consume stays skipped after a re-run" (2 — re-running
+failed jobs re-runs their dependents); "`lib/` is outside the cone" (4, 9 — it is `scripts/lib/`); a rehearsal
+release (13 — residual recorded in §4).
 
 ## 8. Definition of Done
 
-- [ ] H1–H5 observed RED with the real symptom, then GREEN; every break-it red and restored byte-identical.
+- [ ] H1–H5, H1b, H2b, H4b observed RED with the real symptom, then GREEN; every break-it red and restored
+      byte-identical.
+- [ ] `plan-lifecycle.mjs` clean; `todo/README.md` row current; promotion done after the first real release run.
 - [ ] typecheck, lint, the whole suite, actionlint green; numbers in the PR.
 - [ ] No privileged job in any workflow runs dependency code; the build job holds the one pack.
 - [ ] README, POST_DEPLOY.md, research docs updated; the parent plan points here.

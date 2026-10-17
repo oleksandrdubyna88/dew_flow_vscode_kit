@@ -154,7 +154,7 @@ function resolveImport(file: string, spec: string): string | undefined {
   }
   const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(file), spec));
 
-  return fs.existsSync(path.join(ROOT, resolved)) && fs.statSync(path.join(ROOT, resolved)).isFile() ? resolved : undefined;
+  return fs.statSync(path.join(ROOT, resolved), { throwIfNoEntry: false })?.isFile() === true ? resolved : undefined;
 }
 
 /**
@@ -366,6 +366,10 @@ test('the privileged job works on the build\'s bytes: publish needs build, downl
   assert.ok(check !== undefined, 'publish has no step with id tarball');
   assert.equal(mapAt(check['env'], 'tarball env')['TARBALL'], '${{ needs.build.outputs.tarball }}');
   assert.match(String(check['run']), /sha256sum -c "\$TARBALL\.sha256"/);
+  assert.match(String(check['run']), /grep -Eqx/, 'the tarball step does not refuse a name that is not a plain .tgz file name before using it');
+  // sha256sum writes `hash  name` in text mode and `hash *name` in binary mode; the name is read in either.
+  assert.match(String(check['run']), /awk '\{sub\(\/\^\\\*\/, "", \$2\); print \$2\}' "\$TARBALL\.sha256"/, 'the tarball step does not check, in text and binary mode alike, that the .sha256 names exactly that file');
+  assert.match(String(check['run']), /::error::/, 'the tarball step does not say why it refuses');
   assert.match(String(check['run']), /path=.*>> *"\$GITHUB_OUTPUT"/, 'the tarball step does not write path= to $GITHUB_OUTPUT');
 
   const downloaded = steps.indexOf(download);

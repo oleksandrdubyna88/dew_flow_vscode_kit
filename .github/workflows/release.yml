@@ -226,7 +226,9 @@ jobs:
           TARBALL: ${{ needs.build.outputs.tarball }}
         run: |
           set -euo pipefail
-          sha256sum -c "$TARBALL.sha256"
+          printf '%s' "$TARBALL" | grep -Eqx '[A-Za-z0-9._-]+\.tgz' || { echo "::error::release: the build named the tarball \"$TARBALL\", which is not a plain .tgz file name"; exit 1; }
+          [ "$(awk '{sub(/^\*/, "", $2); print $2}' "$TARBALL.sha256")" = "$TARBALL" ] || { echo "::error::release: the .sha256 does not name the tarball \"$TARBALL\""; exit 1; }
+          sha256sum -c "$TARBALL.sha256" || { echo "::error::release: the downloaded tarball does not match its sha256 — the artifact changed on its way from build"; exit 1; }
           echo "path=$GITHUB_WORKSPACE/from-build/$TARBALL" >> "$GITHUB_OUTPUT"
 
       # SLSA v1 provenance of that tarball, signed with this job's OIDC token (identity: this repository,

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/oleksandrdubyna88/dew_flow_vscode_kit/compare/v0.1.0...v0.1.1) (2026-10-17)
+
+
+### Bug Fixes
+
+* publish to GitHub Packages with an artifact attestation; 0.1.0 never reached a registry ([#11](https://github.com/oleksandrdubyna88/dew_flow_vscode_kit/issues/11)) ([f4c5b7b](https://github.com/oleksandrdubyna88/dew_flow_vscode_kit/commit/f4c5b7b345d3f684a4900546d5b81e332ced093b))
+
 ## 0.1.0 (2026-10-16)
 
 

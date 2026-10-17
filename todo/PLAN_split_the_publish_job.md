@@ -3,7 +3,7 @@
 > Status: **plan only, nothing implemented yet, 2026-10-17.** Scope: `.github/workflows/release.yml`,
 > `src/test/releaseWorkflows.test.ts`, README "Release and rollback", POST_DEPLOY.md (where item 5 runs),
 > research/architecture.md, research/module_tests.md. Follows
-> [PLAN_publish_to_github_packages.md](PLAN_publish_to_github_packages.md), whose report named this hardening;
+> [PLAN_publish_to_github_packages.md](../research/PLAN_publish_to_github_packages.md), whose report named this hardening;
 > the coordinator ordered it before 0.2.0.
 
 ## 1. Symptom and goal
@@ -129,7 +129,7 @@ stops the next release at or before its publish, and is fixed forward like any f
 README "Release and rollback": the four jobs and why; "When a publish fails" → re-run FAILED jobs (the artifact is
 re-used, nothing re-packed), never "Re-run all jobs" after a publish. POST_DEPLOY.md: item 5's sentence says the
 `consume` job runs it. research/architecture.md: the release diagram and section. research/module_tests.md: H1-H5.
-[PLAN_publish_to_github_packages.md](PLAN_publish_to_github_packages.md): one line pointing here as the hardening
+[PLAN_publish_to_github_packages.md](../research/PLAN_publish_to_github_packages.md): one line pointing here as the hardening
 it named.
 
 ## 6. Growth surfaces

@@ -1,10 +1,24 @@
 # PLAN — publish the kit to GitHub Packages, with a GitHub artifact attestation, instead of npmjs
 
-> Status: **in progress, 2026-10-16** — stories S1–S4 are built on the branch `chore/gh-packages-publish`; open:
-> the first release (0.1.1), which is the only run that can observe the real publish, the attestation and the
-> package's visibility (§7, last paragraph). Scope: `package.json`, `.github/workflows/release.yml`,
-> `scripts/verify-published.mjs`, `scripts/pack-and-consume.mjs`, `scripts/lib/npm.mjs`, the release tests,
-> README, POST_DEPLOY.md, the research docs, and the release section of [PLAN_extract_the_kit.md](PLAN_extract_the_kit.md).
+> Status: **IMPLEMENTED, 2026-10-17.** Merged as PR #11 (`f4c5b7b`); 0.1.1 published by release run 39037790733
+> (green: guard, pack-and-consume on ubuntu and windows, publish). **Observed at that release:** the release job's
+> own verify step passed `version`, `integrity` (served sha512 = `dist.integrity` = the attested tarball) and
+> `attestation` (the served bytes, this repository's `release.yml@refs/tags/v0.1.1`, GitHub-hosted, read back from
+> gh's JSON), and its consume step installed and ran the published tarball. **Visibility:** observed public from
+> outside — the package page `github.com/oleksandrdubyna88/dew_flow_vscode_kit/pkgs/npm/vscode-webview-kit`
+> answered 200 to a logged-out request and showed 0.1.1, while a non-existent package name in the same repository
+> answered 404 (2026-10-17). **Open tail:** the REST `visibility` field (POST_DEPLOY item 4) needs a token with
+> `read:packages`, which only the owner's account can grant — checked: this machine's gh token has `gist`,
+> `read:org`, `repo`, `workflow` and was refused with HTTP 403; and whether `npm deprecate` works on GitHub
+> Packages — NOT checked (no bad version exists to deprecate). **Deviations from the plan as written:** the publish
+> child of `publish-once.mjs` reads `registryEnv`'s config, not setup-node's (§12 S2.c.2); `registryEnv` is pinned
+> to `https://npm.pkg.github.com` and to the repository owner's scope (code round); `repositoryUrl` became the one
+> `repositoryOwnerAndName` parser; the retry line of `publish-once.mjs` has no test. The hardening this plan's
+> report named (no dependency code beside the publish credentials) is
+> [PLAN_split_the_publish_job.md](../todo/PLAN_split_the_publish_job.md). Scope: `package.json`,
+> `.github/workflows/release.yml`, `scripts/verify-published.mjs`, `scripts/pack-and-consume.mjs`,
+> `scripts/lib/npm.mjs`, the release tests, README, POST_DEPLOY.md, the research docs, and the release section of
+> [PLAN_extract_the_kit.md](../todo/PLAN_extract_the_kit.md).
 >
 > Cross-repository: wsl_care consumes the kit from its W0 (`wsl_care · todo/`); the consumer setup it needs is §6.
 
@@ -210,15 +224,17 @@ test: it needs a registry answer that is neither a version nor an E404.
 
 ## 11. Definition of Done
 
-- [ ] Every test in §7 written first and observed RED with the real symptom; then GREEN.
-- [ ] Break-its of §5.4 each observed red, each file restored and `cmp`-identical to its saved copy.
-- [ ] typecheck, lint, the whole suite, actionlint: green; observed numbers in the PR.
-- [ ] No `NPM_TOKEN` anywhere in workflows, scripts, package.json; no `--provenance`/`--access`.
-- [ ] README, POST_DEPLOY.md, research/architecture.md, research/module_tests.md, PLAN_extract_the_kit.md updated;
+- [x] Every test in §7 written first and observed RED with the real symptom; then GREEN (PR #11 body).
+- [x] Break-its of §5.4 each observed red, each file restored and `cmp`-identical to its saved copy.
+- [x] typecheck, lint, actionlint green locally; the whole suite 434/434 file by file on `586d0f7`, and green in CI
+      on ubuntu and windows on the merged head.
+- [x] No `NPM_TOKEN` anywhere in workflows, scripts, package.json; no `--provenance`/`--access` (A1, A7).
+- [x] README, POST_DEPLOY.md, research/architecture.md, research/module_tests.md, PLAN_extract_the_kit.md updated;
       trusted publishing recorded as superseded with the reason; the boundary table on both sides.
-- [ ] Gate: plan round `proceed`, code round resolved; own Opus review done.
-- [ ] Private-data scan of the diff clean; PR squash-merged with every check green.
-- [ ] release-please proposes 0.1.1 (observed, not merged).
+- [x] Gate: plan round `proceed`, code round resolved; own Opus review done.
+- [x] Private-data scan of the diff clean; PR #11 squash-merged with every check green (CodeRabbit silent in this
+      repository, recorded on the PR).
+- [x] release-please proposed 0.1.1 (#12); the coordinator merged it; 0.1.1 published and verified by its run.
 
 ## 12. Stories
 

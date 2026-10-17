@@ -3,8 +3,9 @@
 > Status: **in progress, 2026-10-02** — epic 1 and epic 2 (E2.S1, E2.S2, E2.S3) have landed on their
 > branches, and E3.S1 (the pre-publish consumer fixture) and E3.S2 (release-please and `release.yml`, no
 > credential used yet) on epic 3's; epic 3's code round, DoD part B (the first credentialed release, after
-> the owner's one-time setup) and the consumer switches are open. Nothing is published, and since
-> 2026-10-16 the first publish goes to GitHub Packages, not npmjs (see the deviation under E3.S2). Scope: this
+> the owner's one-time setup) and the consumer switches are open. **Update 2026-10-17:** 0.1.1 is published
+> to GitHub Packages (not npmjs — see the deviation under E3.S2; 0.1.0 never reached a registry), so DoD B's
+> release items are observed; DoD A's boxes, this plan's promotion and DoD C stay open. Scope: this
 > repository's first release,
 > `@oleksandrdubyna88/vscode-webview-kit` 0.1.0, and the switch of its two consumers.
 >
@@ -93,7 +94,7 @@ after a deliberate re-translation.
 6. `release-please` (`node`, component-less tag `v0.1.0`), `release.yml` publishing with
    `npm publish --provenance --access public` (secret `NPM_TOKEN`), README usage. *(Superseded 2026-10-16:
    GitHub Packages, the job's `GITHUB_TOKEN`, an artifact attestation — see
-   [PLAN_publish_to_github_packages.md](PLAN_publish_to_github_packages.md).)*
+   [PLAN_publish_to_github_packages.md](../research/PLAN_publish_to_github_packages.md).)*
 7. Consumer PR in ConnectOtherAIs; consumer use in wsl_care.
 
 ## 4. Test plan
@@ -343,7 +344,7 @@ webview→host trust boundary, publishing credentials).
   tarball, which `scripts/publish-once.mjs` then publishes; `verify-published.mjs` proves the served bytes are
   the attested bytes). No npm token exists any more; the `npm` environment holds only its `v*` tag rule.
   Everything above that names npmjs, `NPM_TOKEN`, `--provenance` or `anonymousEnv` describes what was built
-  first and is superseded by [PLAN_publish_to_github_packages.md](PLAN_publish_to_github_packages.md), which
+  first and is superseded by [PLAN_publish_to_github_packages.md](../research/PLAN_publish_to_github_packages.md), which
   records the new flow, its tests and its first-release observations. The first version a registry serves
   becomes **0.1.1**. **The boundary between the two plans:**
 
@@ -382,8 +383,8 @@ commit are pull requests in those repositories.
 
 **B — first credentialed release (after the owner adds `NPM_TOKEN` to the `npm` environment and the release-please App secrets):**
 
-- [ ] 0.1.1 published to GitHub Packages from CI with an artifact attestation (0.1.0 never reached a registry); `npm view @oleksandrdubyna88/vscode-webview-kit` against the GitHub registry shows it, and `node scripts/verify-published.mjs 0.1.1` verifies the served bytes and the attestation identity — see [PLAN_publish_to_github_packages.md](PLAN_publish_to_github_packages.md).
-- [ ] On a failed publish: nothing is retagged, the cause is fixed on `main`, and the next release-please PR cuts 0.1.1 — the order in §6.
+- [x] 0.1.1 published to GitHub Packages from CI with an artifact attestation (0.1.0 never reached a registry); `npm view @oleksandrdubyna88/vscode-webview-kit` against the GitHub registry shows it, and `node scripts/verify-published.mjs 0.1.1` verifies the served bytes and the attestation identity — see [PLAN_publish_to_github_packages.md](../research/PLAN_publish_to_github_packages.md). *Observed 2026-10-17:* release run 39037790733 green, its verify step passing version, integrity and attestation; POST_DEPLOY stamped (item 4, the REST visibility field, still needs the owner's `read:packages`).
+- [x] On a failed publish: nothing is retagged, the cause is fixed on `main`, and the next release-please PR cuts 0.1.1 — the order in §6. *Observed:* `v0.1.0` stayed in place, the fix landed as PR #11, release-please cut 0.1.1 (#12).
 - [ ] ~~Trusted publishing bound to the identity above; the token removed.~~ **Superseded 2026-10-16:** the package no longer goes to npmjs, so there is nothing to bind and no npm token to remove; the attestation gives the who-built-it evidence without a token. The reason: the E403 of run 38925094342.
 - [ ] This plan promoted to `research/`.
 

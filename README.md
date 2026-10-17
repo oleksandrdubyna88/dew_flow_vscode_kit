@@ -17,7 +17,7 @@ Extracted from ConnectOtherAIs on 2026-10-02; consumers: ConnectOtherAIs, wsl_ca
 **Status:** being built — see [todo/PLAN_extract_the_kit.md](todo/PLAN_extract_the_kit.md). **0.1.0 never
 reached a registry**: its release run failed at `npm publish` on npmjs (E403, run 38925094342), so the tag
 `v0.1.0` stays, unpublished. The next release, **0.1.1**, is the first publish — to GitHub Packages, with an
-artifact attestation ([todo/PLAN_publish_to_github_packages.md](todo/PLAN_publish_to_github_packages.md)).
+artifact attestation ([research/PLAN_publish_to_github_packages.md](research/PLAN_publish_to_github_packages.md)).
 
 ## Use
 

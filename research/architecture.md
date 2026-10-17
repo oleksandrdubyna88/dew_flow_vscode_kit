@@ -336,7 +336,7 @@ there each step is a workflow, and each refuses rather than skips when its preco
 package goes to **GitHub Packages** (`npm.pkg.github.com`) with a GitHub artifact attestation, published with
 the job's own `GITHUB_TOKEN`; there is no npm token. (The first design published to npmjs with an npm token
 and provenance; run 38925094342 failed with E403 and the switch is recorded in
-[../todo/PLAN_publish_to_github_packages.md](../todo/PLAN_publish_to_github_packages.md).)
+[PLAN_publish_to_github_packages.md](PLAN_publish_to_github_packages.md).)
 
 ```mermaid
 flowchart TB

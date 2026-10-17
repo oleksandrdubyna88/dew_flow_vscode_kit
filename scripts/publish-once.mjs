@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * publish-once — the release job's publish step: `npm publish <tarball>` to GitHub Packages, but only when the
- * registry does not already serve this package at this version (E3.S2, `todo/PLAN_publish_to_github_packages.md`).
+ * registry does not already serve this package at this version (E3.S2, `research/PLAN_publish_to_github_packages.md`).
  *
  *     node scripts/publish-once.mjs <tarball.tgz>
  *     node scripts/publish-once.mjs --facts <file>          # the decision alone, over recorded facts

@@ -4,7 +4,7 @@ name: release
 # PUBLISHES `@oleksandrdubyna88/vscode-webview-kit` TO GitHub Packages (npm.pkg.github.com), with a GitHub
 # artifact attestation, and nothing else does. It publishes with the job's own `GITHUB_TOKEN`; there is no
 # npm token anywhere (the release that tried npmjs, run 38925094342, failed with E403, and that plan is
-# superseded: `todo/PLAN_publish_to_github_packages.md`).
+# superseded: `research/PLAN_publish_to_github_packages.md`).
 #
 # Started ONLY by a published GitHub release — the one release-please cuts when its release pull
 # request merges (`release-please.yml`, with the App token: a release made with `GITHUB_TOKEN` would

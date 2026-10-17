@@ -1,6 +1,8 @@
 # PLAN — no dependency code runs beside the publish credentials: split release.yml's publish job
 
-> Status: **plan only, nothing implemented yet, 2026-10-17.** Scope: `.github/workflows/release.yml`,
+> Status: **in progress, 2026-10-17** — built on the branch `ci/split-publish-job` (tests H1–H5 RED then GREEN,
+> break-its observed); open: the code round, the merge, and the first real release run, which is the only run
+> that can observe the artifact round trip. Scope: `.github/workflows/release.yml`,
 > `src/test/releaseWorkflows.test.ts`, README "Release and rollback", POST_DEPLOY.md (where item 5 runs),
 > research/architecture.md, research/module_tests.md. Follows
 > [PLAN_publish_to_github_packages.md](../research/PLAN_publish_to_github_packages.md), whose report named this hardening;

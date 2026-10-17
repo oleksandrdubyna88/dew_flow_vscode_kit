@@ -134,7 +134,8 @@ it named.
 
 ## 6. Growth surfaces
 
-One artifact per release run (one tarball of ~100 KB and its `.sha256`), `retention-days: 7`, retired by GitHub.
+One artifact per release run (one tarball of ~100 KB and its `.sha256`), `retention-days: 30` (the re-run window;
+plan round findings 0, 8, 14), retired by GitHub.
 It is never a rollback source: the registry is.
 
 ## 7. Build order

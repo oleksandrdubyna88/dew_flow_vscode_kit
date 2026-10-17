@@ -126,19 +126,22 @@ every pull request:
   instance still found (ci.yml's matrix).
 - `src/test/releaseWorkflows.test.ts` — over the parsed workflows: `release.yml`'s only trigger is
   `release: published`; its top-level token reads contents; the publish job's permissions are EXACTLY
-  `contents: read`, `packages: write`, `id-token: write`, `attestations: write`, and `packages`, `id-token`
-  and `attestations` are keys nowhere else in any workflow; publish `needs:` the guard and the in-file call of
+  `contents: read`, `packages: write`, `id-token: write`, `attestations: write`; `id-token` and
+  `attestations` are keys nowhere else in any workflow, and `packages` only at `read`, in the consume job;
+  publish `needs:` the guard, the build and the in-file call of
   `./.github/workflows/pack-and-consume.yml`, which itself needs the guard; publish runs in environment `npm`,
   which holds no secret — its `v*` tag rule is the fence; no npm token is named in any workflow, any
   `.github/scripts` file, anything under `scripts/` or `package.json`; setup-node's `registry-url` is
   `package.json`'s `publishConfig.registry` (`https://npm.pkg.github.com`) and its `scope` the scope of the
-  name; the order guard → `npm test` → pack (`id: pack`, the job's ONE `npm pack`, writing `tarball=` to
-  `$GITHUB_OUTPUT`) → `actions/attest-build-provenance@<sha>` → publish → verify → consume; the attest
-  step's `subject-path`, the publish step's `TARBALL` and the verify step's `TARBALL` are ONE expression
-  (`steps.pack.outputs.tarball`), the publish run being exactly `node scripts/publish-once.mjs "$TARBALL"` and
-  the verify run exactly `node scripts/verify-published.mjs --tarball "$TARBALL" --check version --check
-  integrity --check attestation`; `NODE_AUTH_TOKEN` is set on exactly the publish, verify and consume steps
-  and `GH_TOKEN` on the verify step only, each `${{ secrets.GITHUB_TOKEN }}`; no `run:` anywhere says `npm
+  name; the build order guard → `npm ci` → `npm test` → pack (`id: pack`, the workflow's ONE `npm pack`,
+  in the build job, writing `tarball=` to `$GITHUB_OUTPUT` and a `.sha256`) → upload; the publish order
+  download → tarball check (`id: tarball`) → `actions/attest-build-provenance@<sha>` → publish → verify; the
+  attest step's `subject-path`, the publish step's `TARBALL` and the verify step's `TARBALL` are ONE
+  expression (`steps.tarball.outputs.path`), the publish run being exactly `node scripts/publish-once.mjs
+  "$TARBALL"` and the verify run exactly `node scripts/verify-published.mjs --tarball "$TARBALL" --check
+  version --check integrity --check attestation`; `NODE_AUTH_TOKEN` is set on exactly the publish and verify
+  steps of publish and the consumer step of consume, and `GH_TOKEN` on the verify step only, each
+  `${{ secrets.GITHUB_TOKEN }}`; the split's own tests (below); no `run:` anywhere says `npm
   publish`, `--provenance` or `--access`; no expression is pasted into a `run:` in either release workflow;
   no other workflow is started by a release, holds `id-token` or reads an npm token; the reusable workflow
   has no pull-request trigger; `release-please.yml` runs on pushes to `main` and by hand only,
@@ -146,6 +149,37 @@ every pull request:
   every workflow is pinned to a 40-hex SHA with a `# v…` comment and every checkout drops its credentials;
   no pull-request event starts a release workflow; pr-title.yml runs the docs-only step with the title as
   data.
+- **The publish-job split (`PLAN_split_the_publish_job`)**, in the same file — what each test proves and what it
+  does not:
+  - **H1 (allowlist)** — for EVERY job of EVERY workflow that grants `packages`, `id-token` or `attestations`
+    at `write`, every `run:` is one of three shapes (the `sha256sum -c "$TARBALL.sha256"` check under `set -euo
+    pipefail` and naming no package manager; exactly `node scripts/publish-once.mjs "$TARBALL"`; a
+    `node scripts/verify-published.mjs --tarball "$TARBALL"…`), every `uses` is `actions/checkout`,
+    `setup-node`, `download-artifact` or `attest-build-provenance`, and no setup-node has `cache`. Proves: no
+    step that could run dependency code (`npm ci`, `npm test`, an unknown action, a restored cache) can join the
+    privileged job unseen. Does not prove: what the three allowed scripts do — only that they are the ones
+    named, and H4b bounds what they import.
+  - **H1b (not vacuous)** — the `build` job DOES run `npm ci`, `npm test` and `npm pack`, so H1 is not met by a
+    workflow that builds nothing.
+  - **H2** — `build` holds `{ contents: read }` exactly, owns the workflow's ONE `npm pack` (`id: pack`, writes
+    `tarball=` and a `.sha256`), outputs that name, and uploads under a SHA-pinned `upload-artifact` with
+    `if-no-files-found: error`. **H2b** — `retention-days` is a number of at least 30 (GitHub's re-run window).
+  - **H3** — publish `needs` build; its download names the artifact build uploaded; the tarball step's
+    `TARBALL` is `needs.build.outputs.tarball`; the order download < check < attest < publish < verify; attest,
+    publish and verify name ONE expression. Proves the wiring is consistent on paper. Does not prove the
+    artifact round trip works on a real runner — that is first observed at the next release.
+  - **H4** — publish's checkout has `sparse-checkout` naming `scripts` and `persist-credentials: false`.
+    **H4b** — the static import closure of `scripts/publish-once.mjs` and `scripts/verify-published.mjs`
+    (`import … from`, `import '…'`, `export … from`, `import('…')`, read by regex, not by a parser) is `node:`
+    built-ins and relative files under a sparse-checkout entry; its companion asserts the walk reached
+    `scripts/lib/npm.mjs`. Does not see a computed `import(x)` or a `require` — the scripts are ESM with literal
+    specifiers, and the companion fails if the reader goes blind.
+  - **H5** — a job other than publish runs `pack-and-consume.mjs --published`, needs publish, holds exactly
+    `contents: read` and `packages: read`, with the job token.
+  - **What these do not prove, said plainly.** They hold the SHAPE of the split. They say nothing about what a
+    compromised devDependency would do inside `build` (it can still choose the bytes it packs, and the
+    attestation will say "built by release.yml at the tag"), and nothing about the artifact upload and download
+    on a real runner.
 - `src/test/releaseConfig.test.ts` — one `node` package at `.`, `include-component-in-tag: false`, not a
   draft; before the first release the manifest is empty and `initial-version` is package.json's version,
   from the release pull request on the manifest names package.json's version — and a manifest that names a
@@ -237,8 +271,9 @@ run by hand (`docker run --rm -v <repo>:/repo -w /repo rhysd/actionlint:1.7.12`)
 | **`help-digests` reaches consumers**: the manifest names the bin `vscode-webview-kit-help-digests` → `scripts/help-digests.mjs` and lists it in `files`; `npm pack --dry-run` carries it and otherwise only `dist/`, the manifest, README and LICENSE; run from an installed layout with no `--kit` it uses that package's own `dist/` (exit 1 with the lines; exit 0 when fresh); it starts with a node shebang | covered | `src/test/packaging.test.ts` — red first before `package.json` changed: the bin was `undefined` and the pack lacked the script. Teeth: resolving the default kit from the cwd turns the installed-layout run red |
 | **The packed tarball is what a consumer gets** (E3.S1): `npm pack` from a repository with no `dist/` carries `dist/index.js`, `dist/index.d.ts` and the bin script, built by `prepack`, and nothing unexpected; `npm install` of it offline installs this manifest's version; the fixture type-checks against the INSTALLED `.d.ts` under `node16` / `skipLibCheck: false`; esbuild bundles it with the extensions' flags from inside the copy only; the bundle RUNS under the `vscode` stub — help page under a CSP nonce, a press validated and written once through the stub configuration and pushed back, refused messages writing nothing, a language re-render under a fresh nonce, the escapers, every listener unhooked; the installed bin answers through `npm exec` (and the `.bin` link on POSIX) | covered | `src/test/packaging.test.ts` → `scripts/pack-and-consume.mjs` over `test/consumer-fixture/`. Red first for finding 1 (epic 3 plan round): before `prepack` existed the run stopped at `contents` — *the tarball lacks dist/index.js, dist/index.d.ts — did prepack build dist/? It carries: LICENSE, README.md, package.json, scripts/help-digests.mjs*. Teeth: writing to `ConfigurationTarget.Workspace` in the fixture's adapter fails `run` (`+ target: 2, - target: 1`); marking the kit external in the bundle fails `run` (*the bundle required "@oleksandrdubyna88/vscode-webview-kit" at run time*); each file restored and checked by SHA-256 |
 | **A misspelled import fails the pipeline AT THE TYPECHECK** (`--broken-import`: `createDisplayHots`): exit 1, `FAILED at step "typecheck"` naming the name — TS2724 *has no exported member named 'createDisplayHots'. Did you mean 'createDisplayHost'?* — after `install` passed, and nothing after it runs | covered | `src/test/packaging.test.ts` — red first against the script with its typecheck step removed: the test failed with *FAILED at step "run": … TypeError: (0 , import_vscode_webview_kit2.createDisplayHots) is not a function* — esbuild bundles a missing named import from a CommonJS module without a word, so without the typecheck the misspelling surfaces only when the extension activates. Step restored, SHA-256 identical, green |
-| **Only a published release reaches the publish job, its `id-token`, its `packages: write` and its `attestations: write`; no npm token exists** (E3.S2, rewritten for GitHub Packages 2026-10-16): `release.yml`'s one trigger is `release: published`; the publish job's permissions are exactly `contents: read`, `packages: write`, `id-token: write`, `attestations: write`, and those three keys are nowhere else in any workflow; `NODE_AUTH_TOKEN` only on the publish, verify and consume steps and `GH_TOKEN` only on verify, each `secrets.GITHUB_TOKEN`; the environment `npm` is kept; no pull-request event starts any release workflow; no expression pasted into a `run:`; no npm token named in any workflow, script or `package.json` | covered | `src/test/releaseWorkflows.test.ts`. Teeth, each a one-edit break of the real file observed red and restored `cmp`-identical to a saved copy: `packages: write` added to the guard job (*release.yml: where "packages" is granted*); `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}` on the publish step (2 red: *a file still names the npm token the publish no longer uses*, and the one-credential test); `environment: npm` removed (red: *Expected values to be strictly equal*); earlier, in the E3.S2 round: a `pull_request:` trigger (2 red), the tag name pasted into the guard's `run:` (2 red) |
-| **The publish job packs ONE tarball and attests, publishes and verifies that same tarball** (2026-10-16): guard → `npm test` → pack (`id: pack`, the job's only `npm pack`, `tarball=` to `$GITHUB_OUTPUT`) → `actions/attest-build-provenance@<sha>` → `publish-once.mjs` → `verify-published.mjs --tarball` → the published consumer fixture; the attest `subject-path`, the publish `TARBALL` and the verify `TARBALL` are ONE expression, `steps.pack.outputs.tarball`; setup-node's `registry-url` and `scope` are `package.json`'s `publishConfig.registry` and the scope of its name | covered | `src/test/releaseWorkflows.test.ts`. Teeth, each observed red and restored identical: the attest step moved after the publish step (*order: guard 2, test 4, pack 5, attest 7, publish 6, verify 8, consume 9*); `registry-url: https://registry.npmjs.org` (*registry-url is not package.json's publishConfig.registry*); the publish step's `TARBALL` another path (*Expected values to be strictly equal*); a second `npm pack` in the verify step's run (2 red: *the publish job runs npm pack in 2 steps — exactly one tarball may exist*, and the exact-run test) |
+| **Only a published release reaches the publish job, its `id-token`, its `packages: write` and its `attestations: write`; no npm token exists** (E3.S2, rewritten for GitHub Packages 2026-10-16): `release.yml`'s one trigger is `release: published`; the publish job's permissions are exactly `contents: read`, `packages: write`, `id-token: write`, `attestations: write`, and `id-token` and `attestations` are keys nowhere else in any workflow, `packages` only at `read` in the consume job (restated 2026-10-17 for the split); `NODE_AUTH_TOKEN` only on the publish and verify steps of publish and the consumer step of consume, and `GH_TOKEN` only on verify, each `secrets.GITHUB_TOKEN`; the environment `npm` is kept; no pull-request event starts any release workflow; no expression pasted into a `run:`; no npm token named in any workflow, script or `package.json` | covered | `src/test/releaseWorkflows.test.ts`. Teeth, each a one-edit break of the real file observed red and restored `cmp`-identical to a saved copy: `packages: write` added to the guard job (*release.yml: where "packages" is granted*); `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}` on the publish step (2 red: *a file still names the npm token the publish no longer uses*, and the one-credential test); `environment: npm` removed (red: *Expected values to be strictly equal*); earlier, in the E3.S2 round: a `pull_request:` trigger (2 red), the tag name pasted into the guard's `run:` (2 red) |
+| **The build job packs ONE tarball; the publish job attests, publishes and verifies that same tarball** (2026-10-16, restated 2026-10-17 for the split): build: guard → `npm ci` → `npm test` → pack (`id: pack`, the workflow's only `npm pack`, `tarball=` and a `.sha256`) → upload; publish: download → tarball check → `actions/attest-build-provenance@<sha>` → `publish-once.mjs` → `verify-published.mjs --tarball`; consume: the published consumer fixture; the attest `subject-path`, the publish `TARBALL` and the verify `TARBALL` are ONE expression, `steps.tarball.outputs.path`; setup-node's `registry-url` and `scope` are `package.json`'s `publishConfig.registry` and the scope of its name | covered | `src/test/releaseWorkflows.test.ts`. Teeth, each observed red and restored identical, from before the split (when pack was in the publish job): the attest step moved after the publish step (*order: guard 2, test 4, pack 5, attest 7, publish 6, verify 8, consume 9*); `registry-url: https://registry.npmjs.org` (*registry-url is not package.json's publishConfig.registry*); the publish step's `TARBALL` another path (*Expected values to be strictly equal*); a second `npm pack` in the verify step's run (2 red: *the publish job runs npm pack in 2 steps — exactly one tarball may exist*, and the exact-run test) |
+| **No dependency code runs beside the publish and signing credentials** (2026-10-17, `PLAN_split_the_publish_job`): H1 allowlist of `run:` shapes and actions for every job that can publish or sign, in every workflow; H1b the build job does run the dependency commands; H2/H2b the build job's `contents: read`, its one pack, the upload with `if-no-files-found: error` and `retention-days` of at least 30; H3 publish needs build, downloads that artifact, checks it, then attests, publishes, verifies one expression; H4/H4b sparse checkout of `scripts` and the scripts' import closure inside it; H5 the consume job | covered, shape only | `src/test/releaseWorkflows.test.ts`. Red first against the unsplit `release.yml`: 14 of 27 red, e.g. *release.yml publish runs steps outside the allowlist: The guard, on the checkout that is published, Install, Test, Pack once — …*, *release.yml job "build" is not a mapping: undefined*, *publish's checkout sparse-checkout is [], which does not name scripts*, *no job other than publish runs node scripts/pack-and-consume.mjs --published*. Teeth, each a one-edit break of the real file, observed red and restored byte-identical (SHA-256 and `fc /b`): an `npm ci` step in publish (H1: *publish runs steps outside the allowlist: Install*); `cache: npm` on publish's setup-node (H1); attest `subject-path: from-build/other.tgz` (H3: *Expected values to be strictly equal*); the tarball check moved after attest (H3: *order: download 2, check 4, attest 3, …*); `packages: write` added to build (3 red: the A2 grants test, H1, H2); the consumer step moved back into publish (4 red: A2, A6, H1, H5); `sparse-checkout` removed (2 red: H4, H4b); `retention-days: 7` (H2b: *retention-days is 7*). **Not proven:** the artifact round trip on a real runner, and anything about what a devDependency would do in `build` |
 | **A publish that already happened is not repeated, and the verify step still decides** (2026-10-16): a version the registry serves publishes NOTHING (exit 0); one it does not serve, or an answer naming another version, publishes that tarball by name; usage and an empty token exit 2 before the registry is asked; the token is never printed | covered | `src/test/publishOnce.test.ts`, red first: *Cannot find module '…/scripts/publish-once.mjs'* in all five. Teeth: `decide` always `publish` (B1 red: the served line did not match); always `skip` (2 red: the not-served line did not match); `registryEnv` moved after the registry question (*a registry question reached stdout before the token was checked*) |
 | **`registryEnv` writes the token REFERENCE, never the value** (2026-10-16): two lines derived from the manifest; `${NODE_AUTH_TOKEN}` literal; `npm_*` of any case dropped; an empty token refused before any file is written | covered | `src/test/npmEnv.test.ts`, red first: *registryEnv is not a function*. Teeth: the token value written instead of the reference (3 red: *the user config holds the token value*); the empty-token refusal dropped (red: *an empty token must not be accepted*); the registry pin removed (red: *registry "https://registry.example.test/npm/" was accepted*); the scope check removed (red: *a scope of another owner was accepted*); each restored identical |
 | **release-please proposes with the App token, only from `main`**; pr-title.yml's docs-only step gets the title as data | covered | `src/test/releaseWorkflows.test.ts`. Teeth: `token: ${{ secrets.GITHUB_TOKEN }}` (red); a `pull_request:` trigger (2 red); `PR_TITLE` removed from the docs-only step (red) — each restored by SHA-256 |
@@ -330,6 +365,11 @@ harness) are where a real webview is exercised. In particular:
   real GitHub Packages package and a token. `registryEnv` is held in a child process with a sentinel token,
   and what npm does with the `${NODE_AUTH_TOKEN}` reference is npm's (measured once by hand: an unset
   variable in that line does not break other npm commands).
+- **The split of the publish job holds in shape, not in behaviour.** The artifact upload in `build` and the
+  download in `publish` are first observed at the next release, and nothing here shows what a compromised
+  devDependency would do inside `build`: it can still choose the bytes it packs, and the attestation then
+  says "built by release.yml at the tag". The suite proves only that no such code runs in the job that holds
+  the publish token and the signing identity (H1, H4b).
 - The workflow tests read the files through a subset reader, not GitHub's parser; actionlint, run by hand,
   is the check that GitHub's schema accepts them, and the first real runs are the check that GitHub
   behaves as the files say.
@@ -344,6 +384,7 @@ On every pull request and push to `main`, in CI.
 CI's `build-test` job runs `npm test` on both platforms, and `ci.yml` also calls the reusable
 `pack-and-consume.yml`, which runs `npm run pack-and-consume` alone on both platforms — the job
 `release.yml` calls again, at the tag, before it publishes. `release.yml` runs the suite once more in its
-publish job (`npm publish <tarball>` runs no lifecycle script, so `prepublishOnly` does not run again), then
-packs once, attests, publishes once, and runs POST_DEPLOY.md's checks 1, 2, 3 and 5 against what GitHub
-Packages serves (check 4, visibility, needs `read:packages` and is a person's).
+build job (`npm publish <tarball>` runs no lifecycle script, so `prepublishOnly` does not run again), which
+then packs once; its publish job attests that tarball, publishes it once, and runs POST_DEPLOY.md's checks 1,
+2 and 3 against what GitHub Packages serves, and its consume job runs check 5 (check 4, visibility, needs
+`read:packages` and is a person's).

@@ -347,31 +347,50 @@ flowchart TB
   rp2 -->|"App token"| rel["tag vX.Y.Z and a PUBLISHED GitHub release"]
   rel -->|"release: published"| guard["release.yml guard: tag shape, ref, not draft, author Bot, commit on main, package.json version"]
   guard --> pac["pack-and-consume.yml at the tag: ubuntu and windows"]
-  guard --> pub
-  pac --> pub["publish job, environment npm with no secret: guard again, npm ci, npm test"]
-  pub --> pack["Pack once: ONE npm pack, its path a step output"]
-  pack --> att["actions/attest-build-provenance: SLSA v1 of that tarball, signed with the job OIDC token"]
+  guard --> build["build job, permissions: contents read only. Guard again, npm ci, npm test, ONE npm pack with its sha256. Dependency code runs here and only here"]
+  build -->|"artifact release-tarball, kept 30 days, plus output tarball"| dl["publish job, environment npm with no secret. Permissions: contents read, packages write, id-token write, attestations write. Sparse checkout of scripts only, then download the artifact"]
+  pac --> dl
+  guard --> dl
+  dl --> chk["sha256sum -c: a corruption check of the round trip, not a provenance bind"]
+  chk --> att["actions/attest-build-provenance: SLSA v1 of that tarball, signed with the job OIDC token"]
   att --> once["publish-once.mjs: npm view; served means publish nothing, else npm publish that tarball"]
   once -->|"GITHUB_TOKEN, packages: write"| reg[("GitHub Packages: X.Y.Z")]
-  reg --> verify["verify-published.mjs: version, integrity served = attested, attestation identity of the served bytes"]
-  reg --> fixture["pack-and-consume.mjs --published: the served tarball through the consumer fixture"]
+  reg --> verify["verify-published.mjs, same job: version, integrity served = attested, attestation identity of the served bytes"]
+  verify -->|"needs publish"| fixture["consume job, permissions: contents read, packages read. npm ci, then pack-and-consume.mjs --published: the served tarball through the consumer fixture"]
   verify --> pd["POST_DEPLOY.md: five checks, run and stamped by a person, plus visibility"]
   fixture --> pd
 ```
+
+**The four release jobs, split so that no dependency code runs beside the credentials.** Before the split
+one job held `packages: write`, `id-token: write` and `attestations: write` AND ran `npm ci`, `npm test`
+and the build, so a compromised devDependency ran in the process tree able to publish other bytes or to sign
+an attestation for bytes it chose. Now `build` (`contents: read` and nothing else) is the only job that runs
+dependency code, and it hands over ONE tarball and its `.sha256` as the artifact `release-tarball`
+(`retention-days: 30`, GitHub's re-run window, so a "Re-run failed jobs" always finds it); `publish` is the
+only privileged job and runs only the tarball check, `publish-once.mjs` and `verify-published.mjs`
+(node built-ins, the npm that ships with node, and `gh`); `consume` (`contents: read`, `packages: read`) runs
+the consumer fixture against the published version, because it needs `npm ci`. **The honest limit:** a
+compromised build dependency can still choose the bytes it packs, and the attestation then truthfully says
+"built by release.yml at the tag". The split takes the publish token and the signing identity away from
+dependency code; it does not make the build trustworthy. The suite holds the split as allowlists
+(`releaseWorkflows.test.ts` H1–H5, see [module_tests.md](module_tests.md)): every `run:` of a privileged job is
+one of three shapes, every action one of four, and the two scripts' import closure stays inside the
+sparse-checked-out `scripts/` folder.
 
 **Who can reach the token and the signing identity.** `release.yml` has one trigger, `release: published`;
 its top-level token reads contents; `packages: write`, `id-token: write` and `attestations: write` exist only
 inside the publish job (its permissions are exactly those three plus `contents: read`; GitHub's levels are
 cumulative, so `packages: write` also reads the package back and `attestations: write` also reads attestations
-— both observed only at the first release). That job runs in the GitHub environment `npm`, which holds **no
-secret**: its deployment rule, set by the owner, admits `v*` tags only, a fence owned by GitHub's settings.
-`NODE_AUTH_TOKEN` is set on exactly three steps of that job (publish, verify, consume), each time to
-`secrets.GITHUB_TOKEN`, and `GH_TOKEN` on the verify step only. No `pull_request` event of any kind starts
+— both observed only at the first release); the `build` job holds `contents: read` alone and the `consume`
+job `contents: read` and `packages: read`. The publish job runs in the GitHub environment `npm`, which holds
+**no secret**: its deployment rule, set by the owner, admits `v*` tags only, a fence owned by GitHub's
+settings. `NODE_AUTH_TOKEN` is set on exactly three steps (publish and verify in the publish job, the
+consumer fixture in `consume`), each time to `secrets.GITHUB_TOKEN`, and `GH_TOKEN` on the verify step only. No `pull_request` event of any kind starts
 `release.yml`, `release-please.yml` or `pack-and-consume.yml`, so a pull request — a fork's included — cannot
 reach either. Every value from the event reaches a script as an environment variable; no expression is pasted
 into a shell.
 
-**The guard** (`.github/scripts/release-guard.mjs`, run by both jobs that check out the tag) refuses a run
+**The guard** (`.github/scripts/release-guard.mjs`, run by the `guard` job and again by `build` on its own full-history checkout of the tag) refuses a run
 that is not a published release, a tag that is not exactly `v<major>.<minor>.<patch>`, a ref other than that
 tag, a draft or pre-release, a release made by anything but a bot (the App — a release made with
 `GITHUB_TOKEN` starts no workflow, so no other bot can raise this event), a checkout that is not the
@@ -406,9 +425,10 @@ token with `read:packages` locally). It is also PINNED: `publishConfig.registry`
 `GITHUB_PACKAGES` (`https://npm.pkg.github.com`, one trailing slash tolerated) and the scope must be `@` + the
 owner of `manifest.repository`, or it throws before writing — a typo or a changed manifest cannot send the
 job's package-write token to another host. `repositoryOwnerAndName` is the one parser of `repository`, shared
-with `verify-published.mjs`. In `release.yml`, setup-node's `.npmrc` serves the job's own `npm ci` and
-`npm pack` steps; the scripts' npm children (including the one `publish-once.mjs` runs for `npm publish`)
-read only `registryEnv`'s file, because `childEnv` drops `NPM_CONFIG_USERCONFIG` with every other `npm_*` key.
+with `verify-published.mjs`. In `release.yml`, the build job has no `registry-url` (no `.npmrc`, no token);
+the publish job's setup-node writes an `.npmrc` that no step of that job reads directly, because the scripts'
+npm children (including the one `publish-once.mjs` runs for `npm publish`) read only `registryEnv`'s file —
+`childEnv` drops `NPM_CONFIG_USERCONFIG` with every other `npm_*` key.
 
 **Publish once** (`scripts/publish-once.mjs`): the publish step asks the registry whether `<name>@<version>`
 is served (`npm view --json`, one retry, an unknown answer is exit 2 — never publish on an answer it did not
@@ -416,7 +436,7 @@ understand). Served: it publishes NOTHING, says so, exits 0, and the verify step
 bytes are this run's attested bytes — so a run that failed after a successful publish can be re-run. Not
 served: `npm publish <the tarball>` with the same user config. The decision (`decide`) is a pure function held
 through `--facts`. `npm publish <tarball>` runs no lifecycle script, so `prepublishOnly` does not run inside
-the publish; the job's own `npm test` and `prepack` in the pack step guard the bytes.
+the publish; the build job's own `npm test` and `prepack` in its pack step guard the bytes.
 
 **Verification is of what GitHub Packages serves.** `scripts/verify-published.mjs` has four checks, each a
 pure decision over gathered facts (`--facts`): **version** — `npm view` answers that name at that version
@@ -432,13 +452,16 @@ suite holds the decision against facts recorded from a real attested artefact (`
 unrecordable parts built in the documented shape — see [module_tests.md](module_tests.md).
 
 **Failure, rollback, and what is not built yet.** A failed publish leaves the tag and the GitHub release in
-place; tags are never moved; a cause outside the repository is fixed and THAT run re-run, a cause inside it
-is fixed forward to the next patch; a published version is never re-published and never deleted. `npm
+place; tags are never moved; a cause outside the repository is fixed and THAT run's failed jobs re-run
+("Re-run failed jobs" reuses the artifact; never "Re-run all jobs", which re-packs, and verify refuses other
+bytes), a cause inside it is fixed forward to the next patch; a published version is never re-published and
+never deleted. `npm
 deprecate` against the GitHub registry is not yet verified to work (README "Release and rollback"). npm
 trusted publishing is **superseded**: the package no longer goes to npmjs, so there is nothing to bind, and
 the attestation gives the who-built-it evidence without a token. What only the first release can observe:
-that `packages: write` reads back, that the new package is public (visibility inheritance), and the real
-packument and attestation shapes.
+that `packages: write` reads back, that the new package is public (visibility inheritance), the real
+packument and attestation shapes, and that the artifact round trip between `build` and `publish` works on a
+real runner.
 
 ## The test harness
 

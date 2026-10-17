@@ -300,23 +300,34 @@ setup at the end of this section.
    **guard** — the tag is exactly `v<major>.<minor>.<patch>`, the release was made by the App, it is not a
    draft or pre-release, its commit is on `main`, and `package.json` at the tag says the same version;
    **pack-and-consume** — the packed tarball installs, type-checks, bundles and runs in the consumer fixture
-   on ubuntu and windows; **publish** — needs both, runs in the GitHub environment `npm`, and takes these
-   steps in this order:
-   1. re-check the guard on its own checkout, `npm ci`, `npm test`;
-   2. **pack once** — one `npm pack` into the runner's temp folder, exactly one `.tgz`, its path a step
-      output (`prepack` builds `dist/` inside it);
-   3. **attest** — `actions/attest-build-provenance` signs SLSA v1 provenance of THAT tarball with the job's
-      OIDC token and stores it on this repository;
-   4. **publish once** — `node scripts/publish-once.mjs <that tarball>` runs `npm publish <that tarball>`
-      with the job's `GITHUB_TOKEN`, unless GitHub Packages already serves this version (see "When a publish
-      fails"). `npm publish <tarball>` runs no lifecycle script — npm runs `prepublishOnly` only for a
-      directory — so what guards the published bytes is the job's own `npm test` and the `prepack` build in
-      step 2;
-   5. **verify** — `scripts/verify-published.mjs --tarball <that tarball>` proves what GitHub Packages
+   on ubuntu and windows; then three more jobs, **build → publish → consume**, so that no dependency code
+   runs beside the publish and signing credentials:
+   1. **build** — holds `contents: read` and nothing else, and is the only job that runs dependency code:
+      it re-checks the guard on its own checkout, runs `npm ci` and `npm test`, then **packs once** — one
+      `npm pack` into the runner's temp folder, exactly one `.tgz` (`prepack` builds `dist/` inside it), a
+      `.sha256` beside it — and uploads both as the artifact `release-tarball`, kept 30 days;
+   2. **publish** — needs the guard, pack-and-consume and build, runs in the GitHub environment `npm`, and is
+      the only job with `packages: write`, `id-token: write` and `attestations: write`. It checks out
+      `scripts/` alone and runs no dependency code, only these steps in this order: download the artifact;
+      check the tarball against its `.sha256` (a corruption check of the round trip — not a provenance bind,
+      because the digest travels with the tarball); **attest** — `actions/attest-build-provenance` signs SLSA
+      v1 provenance of THAT tarball with the job's OIDC token and stores it on this repository; **publish
+      once** — `node scripts/publish-once.mjs <that tarball>` runs `npm publish <that tarball>` with the
+      job's `GITHUB_TOKEN`, unless GitHub Packages already serves this version (see "When a publish fails").
+      `npm publish <tarball>` runs no lifecycle script — npm runs `prepublishOnly` only for a directory — so
+      what guards the published bytes is the build job's own `npm test` and the `prepack` build in its pack
+      step; **verify** — `scripts/verify-published.mjs --tarball <that tarball>` proves what GitHub Packages
       SERVES: the version; that the served tarball's sha512 is the packument's `dist.integrity` and the
-      attested file's; and that `gh attestation verify` accepts the SERVED bytes for the identity below;
-   6. **consume** — the consumer fixture installs the published version and runs
-      (`pack-and-consume.mjs --published`).
+      attested file's (this is what binds the published bytes to the attested ones); and that `gh
+      attestation verify` accepts the SERVED bytes for the identity below;
+   3. **consume** — holds `contents: read` and `packages: read`, needs publish, and runs the consumer
+      fixture against the published version (`pack-and-consume.mjs --published`). It needs `npm ci`
+      (TypeScript, esbuild), so it cannot share a job with the credentials.
+
+   **The limit, said plainly:** a compromised build dependency can still choose the bytes it packs, and the
+   attestation will then truthfully say "built by `release.yml` at the tag". The split keeps the publish
+   token and the signing identity away from dependency code; it does not make the build trustworthy. The
+   defences for the build stay the lockfile, `npm ci` and the tests.
 5. **Afterwards**, from a checkout of the tag, run [POST_DEPLOY.md](POST_DEPLOY.md) and stamp it. It needs
    `NODE_AUTH_TOKEN` (a classic personal access token with `read:packages`) and a `gh` login with
    `read:packages` (`gh auth refresh -s read:packages`):
@@ -399,15 +410,20 @@ The tag and the GitHub release stay exactly where they are (plan §6, point 5). 
 deleted**: a moved tag makes every checkout that already fetched it wrong in a way nothing reports, and
 deleting the tag of a published release turns the release into a draft.
 
+**Which re-run:** always **"Re-run failed jobs"**, never **"Re-run all jobs"** after a publish. Re-running
+the failed jobs reuses the SAME artifact (kept 30 days, GitHub's re-run window), so nothing is re-packed,
+and it re-runs the jobs that depend on the failed one, the consume job included. Re-running all jobs
+re-packs, and may build other bytes; verify then refuses them.
+
 - **The cause is outside the repository** (an environment rule, a missing permission, a registry outage) and
-  the run stopped before the publish step: fix the setting and **re-run that run**. Same tag, same commit,
-  nothing was published.
+  the run stopped before the publish step: fix the setting and **re-run the failed jobs**. Same tag, same
+  commit, nothing was published.
 - **The cause is in the repository**: fix it on `main`; the next release-please pull request cuts the next
   patch and its tag publishes. A fix that lives only in `.github/` releases nothing by itself
   (`exclude-paths`), so the next patch is cut by the next commit that changes the package; a release tag
   runs the workflow file AT that tag, so the fix reaches the release it needs. Say in the next release's
   notes that the version before it never reached a registry.
-- **The publish succeeded and a later step failed**: **re-run that run.** `publish-once.mjs` asks GitHub
+- **The publish succeeded and a later step failed**: **re-run the failed jobs.** `publish-once.mjs` asks GitHub
   Packages first; the version is already served, so it publishes nothing, says so, and the verify step then
   reads what is served. If it is this run's attested bytes the run goes green; the attestation and the
   consume step still run.

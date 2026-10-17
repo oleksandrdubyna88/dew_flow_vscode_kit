@@ -4,7 +4,7 @@
 > machinery and the pure modules) and epic 2 (the display host, the help catalog, and the help page and
 > panel) have landed; of the release pipeline (epic 3), the pre-publish check that packs, installs, bundles
 > and runs the tarball (E3.S1) and the publishing half — release-please and `release.yml` (E3.S2) — are in
-> the repository, but **nothing is published yet**: the first release waits for the owner's one-time
+> the repository, but **nothing is published yet** (0.1.0 never reached a registry; 0.1.1 will be the first publish, to GitHub Packages): the first release waits for the owner's one-time
 > setup (README "Release and rollback"). This file describes what exists and is rewritten as each module
 > lands.
 
@@ -325,14 +325,18 @@ in `npm test` (`src/test/packaging.test.ts`, both modes) and in the reusable
 `.github/workflows/pack-and-consume.yml` (`workflow_call` + `workflow_dispatch`, ubuntu and windows),
 which `ci.yml` calls and `release.yml` calls again so its publish job can `needs:` it — `needs:` cannot
 reach a job in another workflow file (finding 0). `--published <version>` replaces only the pack step — `npm
-pack <name>@<version>` downloads the registry's tarball, asked anonymously — and the expected version, so
+pack <name>@<version>` downloads the registry's tarball (GitHub Packages, with the token — `registryEnv`) — and the expected version, so
 the same seven checks after it run over the published bytes (E3.S2). Details and red observations:
 [module_tests.md](module_tests.md).
 
 ## The release path — propose, tag, publish, verify (E3.S2)
 
 Nobody publishes from a machine. A person's one decision is merging release-please's pull request; from
-there each step is a workflow, and each refuses rather than skips when its precondition is missing.
+there each step is a workflow, and each refuses rather than skips when its precondition is missing. The
+package goes to **GitHub Packages** (`npm.pkg.github.com`) with a GitHub artifact attestation, published with
+the job's own `GITHUB_TOKEN`; there is no npm token. (The first design published to npmjs with an npm token
+and provenance; run 38925094342 failed with E403 and the switch is recorded in
+[../todo/PLAN_publish_to_github_packages.md](../todo/PLAN_publish_to_github_packages.md).)
 
 ```mermaid
 flowchart TB
@@ -344,20 +348,28 @@ flowchart TB
   rel -->|"release: published"| guard["release.yml guard: tag shape, ref, not draft, author Bot, commit on main, package.json version"]
   guard --> pac["pack-and-consume.yml at the tag: ubuntu and windows"]
   guard --> pub
-  pac --> pub["publish job, environment npm, id-token write: token check, guard again, npm ci, npm test"]
-  pub -->|"NODE_AUTH_TOKEN from NPM_TOKEN"| npm[("npmjs: X.Y.Z with SLSA v1 provenance")]
-  npm --> verify["verify-published.mjs, anonymous: version, provenance identity and digest, npm audit signatures"]
-  npm --> fixture["pack-and-consume.mjs --published: the served tarball through the consumer fixture"]
-  verify --> pd["POST_DEPLOY.md: the same four commands, run and stamped by a person"]
+  pac --> pub["publish job, environment npm with no secret: guard again, npm ci, npm test"]
+  pub --> pack["Pack once: ONE npm pack, its path a step output"]
+  pack --> att["actions/attest-build-provenance: SLSA v1 of that tarball, signed with the job OIDC token"]
+  att --> once["publish-once.mjs: npm view; served means publish nothing, else npm publish that tarball"]
+  once -->|"GITHUB_TOKEN, packages: write"| reg[("GitHub Packages: X.Y.Z")]
+  reg --> verify["verify-published.mjs: version, integrity served = attested, attestation identity of the served bytes"]
+  reg --> fixture["pack-and-consume.mjs --published: the served tarball through the consumer fixture"]
+  verify --> pd["POST_DEPLOY.md: five checks, run and stamped by a person, plus visibility"]
   fixture --> pd
 ```
 
-**Who can reach the secret and the signing token.** `release.yml` has one trigger, `release: published`;
-its top-level token reads contents; `id-token: write` and `secrets.NPM_TOKEN` exist only inside the publish
-job, which runs in the GitHub environment `npm` (whose deployment rule, set by the owner, admits `v*` tags
-only). No `pull_request` event of any kind starts `release.yml`, `release-please.yml` or
-`pack-and-consume.yml`, so a pull request — a fork's included — cannot reach either. Every value from the
-event reaches a script as an environment variable; no expression is pasted into a shell.
+**Who can reach the token and the signing identity.** `release.yml` has one trigger, `release: published`;
+its top-level token reads contents; `packages: write`, `id-token: write` and `attestations: write` exist only
+inside the publish job (its permissions are exactly those three plus `contents: read`; GitHub's levels are
+cumulative, so `packages: write` also reads the package back and `attestations: write` also reads attestations
+— both observed only at the first release). That job runs in the GitHub environment `npm`, which holds **no
+secret**: its deployment rule, set by the owner, admits `v*` tags only, a fence owned by GitHub's settings.
+`NODE_AUTH_TOKEN` is set on exactly three steps of that job (publish, verify, consume), each time to
+`secrets.GITHUB_TOKEN`, and `GH_TOKEN` on the verify step only. No `pull_request` event of any kind starts
+`release.yml`, `release-please.yml` or `pack-and-consume.yml`, so a pull request — a fork's included — cannot
+reach either. Every value from the event reaches a script as an environment variable; no expression is pasted
+into a shell.
 
 **The guard** (`.github/scripts/release-guard.mjs`, run by both jobs that check out the tag) refuses a run
 that is not a published release, a tag that is not exactly `v<major>.<minor>.<patch>`, a ref other than that
@@ -368,36 +380,65 @@ release's commit, a commit not on `main` (`git merge-base --is-ancestor` over a 
 exit 2.
 
 **A missing credential is a red run, never a skipped one.** `release-please.yml` fails at its first step
-when either App secret is absent, naming both; the publish job fails at its first step when the `npm`
-environment has no `NPM_TOKEN`. Both decide on `secrets.X != ''` in an expression, so the secret itself
-never reaches the step's environment.
+when either App secret is absent, naming both, deciding on `secrets.X != ''` in an expression so the secret
+itself never reaches the step's environment. The publish job needs no secret of its own, so it has no such
+step; a missing permission or an environment rule that refuses the tag fails at the publish step instead.
 
 **release-please** (`release-please-config.json`, `.release-please-manifest.json`): one `node` package at
 the root, tag `v<version>` with no component, `exclude-paths: [".github"]`, and changelog sections that are
 visible exactly for the releasing types (feat, fix, perf, revert) — a visible section is what makes
 release-please open a release, so `docs:` and the other non-releasing types are listed hidden. Not a draft:
-the release carries no assets, and a draft would raise no `release: published`. **The first version is
+the release carries no assets, and a draft would raise no `release: published`. **The first version was
 0.1.0** through `initial-version` with an EMPTY manifest: release-please 17 treats a manifest version other
 than 0.0.0 as already released when no tag matches it (read in the action's bundled source), so the
-siblings' bootstrap shape would have cut 0.1.1. The pull-request title check runs
+siblings' bootstrap shape would have cut 0.1.1. 0.1.0 was tagged but its publish failed (E403 on npmjs), so
+**0.1.1 is the first version a registry serves**. The pull-request title check runs
 `.github/scripts/docs-only-title.mjs` (copied from ConnectOtherAIs, adapted to a root package), which
 refuses a releasing title or commit whose changes, `.github` aside, are documentation alone.
 
-**Verification is of what npmjs serves.** `scripts/verify-published.mjs` asks the registry with no token and
-an empty user config (`scripts/lib/npm.mjs`, `anonymousEnv`): `npm view` answers the version (retried for
-about two minutes for propagation); the packument's SLSA v1 statement, fetched and decoded from its DSSE
-envelope, is about `pkg:npm/<name>@<version>` with the sha512 of the served `dist.integrity`, and names this
-repository, `.github/workflows/release.yml` and `refs/tags/v<version>`; and `npm audit signatures` in a
-throwaway install reports one package with a verified registry signature and a verified attestation. The
-decision is a pure function over those facts (`--facts`), held by the suite against facts recorded from a
-real provenance-published package.
+**The registry environment** (`scripts/lib/npm.mjs`, `registryEnv(dir, manifest)`): every npm a script starts
+runs with `npm_*` removed (case-insensitively) and with ONE user config, a file in the script's temporary
+directory holding `<scope>:registry=<publishConfig.registry>` and `//<host>/:_authToken=${NODE_AUTH_TOKEN}` —
+both derived from `package.json`, and the second the LITERAL reference, so npm expands the token from its own
+environment and it is never written to disk. It throws, before writing anything, when `NODE_AUTH_TOKEN` is
+empty, naming what to set (the job's `GITHUB_TOKEN` with `packages: read` in CI; a classic personal access
+token with `read:packages` locally). It is also PINNED: `publishConfig.registry` must be exactly
+`GITHUB_PACKAGES` (`https://npm.pkg.github.com`, one trailing slash tolerated) and the scope must be `@` + the
+owner of `manifest.repository`, or it throws before writing — a typo or a changed manifest cannot send the
+job's package-write token to another host. `repositoryOwnerAndName` is the one parser of `repository`, shared
+with `verify-published.mjs`. In `release.yml`, setup-node's `.npmrc` serves the job's own `npm ci` and
+`npm pack` steps; the scripts' npm children (including the one `publish-once.mjs` runs for `npm publish`)
+read only `registryEnv`'s file, because `childEnv` drops `NPM_CONFIG_USERCONFIG` with every other `npm_*` key.
+
+**Publish once** (`scripts/publish-once.mjs`): the publish step asks the registry whether `<name>@<version>`
+is served (`npm view --json`, one retry, an unknown answer is exit 2 — never publish on an answer it did not
+understand). Served: it publishes NOTHING, says so, exits 0, and the verify step decides whether the served
+bytes are this run's attested bytes — so a run that failed after a successful publish can be re-run. Not
+served: `npm publish <the tarball>` with the same user config. The decision (`decide`) is a pure function held
+through `--facts`. `npm publish <tarball>` runs no lifecycle script, so `prepublishOnly` does not run inside
+the publish; the job's own `npm test` and `prepack` in the pack step guard the bytes.
+
+**Verification is of what GitHub Packages serves.** `scripts/verify-published.mjs` has four checks, each a
+pure decision over gathered facts (`--facts`): **version** — `npm view` answers that name at that version
+(retried for about two minutes for propagation); **integrity** — the SERVED tarball, downloaded with `npm pack
+<name>@<version>`, has the sha512 of the packument's `dist.integrity`, and with `--tarball <file>` the file the
+job attested has the same sha512 (served = attested); **attestation** — `gh attestation verify <served
+tarball> --repo … --cert-identity …/release.yml@refs/tags/v<version> --source-ref … --deny-self-hosted-runners
+--format json` exits 0 AND its JSON is read back: ONE entry must carry that certificate identity, that ref and
+a GitHub-hosted runner, be SLSA v1 provenance, and list the served file's sha256 among its subjects;
+**visibility** — `gh api /users/<owner>/packages/npm/<name>` says `public` (it needs `read:packages`, so
+`release.yml` does not run it and POST_DEPLOY does). An empty token is exit 2 before anything is asked. The
+suite holds the decision against facts recorded from a real attested artefact (`cli/cli`), with the
+unrecordable parts built in the documented shape — see [module_tests.md](module_tests.md).
 
 **Failure, rollback, and what is not built yet.** A failed publish leaves the tag and the GitHub release in
 place; tags are never moved; a cause outside the repository is fixed and THAT run re-run, a cause inside it
-is fixed forward to the next patch; a bad version is `npm deprecate`d, never unpublished (README "Release
-and rollback", plan §6). npm trusted publishing is bound only after 0.1.0 exists — a trusted publisher is
-configured per package — and then the token is retired; until then `NPM_TOKEN` is a granular token in the
-`npm` environment.
+is fixed forward to the next patch; a published version is never re-published and never deleted. `npm
+deprecate` against the GitHub registry is not yet verified to work (README "Release and rollback"). npm
+trusted publishing is **superseded**: the package no longer goes to npmjs, so there is nothing to bind, and
+the attestation gives the who-built-it evidence without a token. What only the first release can observe:
+that `packages: write` reads back, that the new package is public (visibility inheritance), and the real
+packument and attestation shapes.
 
 ## The test harness
 
@@ -417,7 +458,7 @@ catalogue, and what the suite does not prove.
   ref, compile them with this repository's `@types` — coai's `helpPage.ts` imports `node:crypto` — and load
   them), `scripts/help-digests.mjs`, `scripts/pack-and-consume.mjs` over `test/consumer-fixture/` (E3.S1;
   `npm run pack-and-consume`; `--published` since E3.S2), `scripts/verify-published.mjs` (E3.S2), and
-  `scripts/lib/npm.mjs` — how both start npm (`node npm-cli.js`, `npm_*` removed, `anonymousEnv`).
+  `scripts/publish-once.mjs` (E3.S2) and `scripts/lib/npm.mjs` — how all three start npm (`node npm-cli.js`, `npm_*` removed, `registryEnv`: GitHub Packages and a `${NODE_AUTH_TOKEN}` reference).
   `package.json` scripts include `prepack: npm run build` (E3.S1). `release-please-config.json` and
   `.release-please-manifest.json` (E3.S2).
 - **CI:** `.github/workflows/ci.yml` runs the whole chain — conventions check, plan lifecycle, typecheck,

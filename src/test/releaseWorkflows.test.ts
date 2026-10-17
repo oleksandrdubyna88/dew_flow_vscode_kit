@@ -57,13 +57,28 @@ function packAndConsumeCall(jobs: Map): string {
   return calls[0] as string;
 }
 
-/** The one step whose `run` is the publish command. */
+/** The one step whose `run` is the publish command — `publish-once.mjs`, which is the only thing that runs `npm publish`. */
 function publishStep(steps: readonly Map[]): Map {
-  const found = steps.filter((step) => typeof step['run'] === 'string' && /\bnpm publish\b/.test(step['run']));
-  assert.equal(found.length, 1, `the publish job must have exactly one npm publish step, found ${found.length}`);
+  const found = steps.filter((step) => typeof step['run'] === 'string' && /publish-once\.mjs/.test(step['run']));
+  assert.equal(found.length, 1, `the publish job must have exactly one publish-once step, found ${found.length}`);
 
   return found[0] as Map;
 }
+
+const publishSteps = (flow: Map): Map[] => stepsOf(mapAt(jobsOf(flow, 'release.yml')['publish'], 'publish'), 'publish');
+const publishJob = (flow: Map): Map => mapAt(jobsOf(flow, 'release.yml')['publish'], 'publish');
+const runs = (pattern: RegExp) => (step: Map): boolean => typeof step['run'] === 'string' && pattern.test(step['run']);
+const PACKED = '${{ steps.pack.outputs.tarball }}';
+const JOB_TOKEN = '${{ secrets.GITHUB_TOKEN }}';
+
+/** Every file under `dir` (relative to the repository, `/`-separated), recursively. */
+function filesUnder(dir: string): string[] {
+  return fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })
+    .flatMap((entry) => entry.isDirectory() ? filesUnder(`${dir}/${entry.name}`) : [`${dir}/${entry.name}`]);
+}
+
+const manifest = (): { name: string; publishConfig: { registry: string } } =>
+  JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')) as { name: string; publishConfig: { registry: string } };
 
 test('release.yml is started by a published release and by nothing else — no pull_request, push, dispatch or schedule', () => {
   const flow = workflow('release.yml');
@@ -72,12 +87,105 @@ test('release.yml is started by a published release and by nothing else — no p
   assert.deepEqual(mapAt(mapAt(flow['on'], 'on')['release'], 'on.release'), { types: ['published'] });
 });
 
-test('release.yml: the top-level token reads contents only, and id-token: write is granted to the publish job alone', () => {
+test('no npm token exists anywhere: NPM_TOKEN appears in no workflow, no .github/scripts file, nothing under scripts/, and not in package.json', () => {
+  const files = [...filesUnder('.github/workflows'), ...filesUnder('.github/scripts'), ...filesUnder('scripts'), 'package.json'];
+  const named = files.filter((file) => fs.readFileSync(path.join(ROOT, file), 'utf8').includes('NPM_TOKEN'));
+
+  assert.deepEqual(named, [], 'a file still names the npm token the publish no longer uses');
+});
+
+test('the publish job\'s permissions are exactly contents: read, packages: write, id-token: write, attestations: write — and packages, id-token and attestations are keys nowhere else in any workflow', () => {
+  const flow = workflow('release.yml');
+
+  assert.deepEqual(publishJob(flow)['permissions'], { contents: 'read', packages: 'write', 'id-token': 'write', attestations: 'write' });
+  for (const key of ['packages', 'id-token', 'attestations']) {
+    for (const file of allWorkflows()) {
+      assert.deepEqual(keysNamed(workflow(file), file, key), file === 'release.yml' ? [`release.yml.jobs.publish.permissions.${key}`] : [], `${file}: where "${key}" is granted`);
+    }
+  }
+});
+
+test('release.yml: the top-level token reads contents only, and the publish job runs in the GitHub environment "npm", which holds no secret — its v* tag rule is the fence', () => {
   const flow = workflow('release.yml');
 
   assert.deepEqual(flow['permissions'], { contents: 'read' });
-  assert.deepEqual(keysNamed(flow, 'release.yml', 'id-token'), ['release.yml.jobs.publish.permissions.id-token']);
-  assert.deepEqual(mapAt(jobsOf(flow, 'release.yml')['publish'], 'publish')['permissions'], { contents: 'read', 'id-token': 'write' });
+  assert.equal(publishJob(flow)['environment'], 'npm');
+});
+
+test('setup-node in the publish job points at package.json\'s publishConfig.registry — GitHub Packages — with the scope of the package name', () => {
+  const setupNode = publishSteps(workflow('release.yml')).find((step) => String(step['uses']).startsWith('actions/setup-node@'));
+  const inputs = mapAt(setupNode?.['with'], 'setup-node with');
+
+  assert.equal(inputs['registry-url'], manifest().publishConfig?.registry, 'registry-url is not package.json\'s publishConfig.registry');
+  assert.equal(inputs['registry-url'], 'https://npm.pkg.github.com');
+  assert.equal(inputs['scope'], manifest().name.split('/')[0]);
+});
+
+test('the publish job packs ONCE, then attests that tarball, then publishes it through publish-once, then verifies, then consumes — after the guard and npm test', () => {
+  const steps = publishSteps(workflow('release.yml'));
+  const index = (what: string, found: (step: Map) => boolean): number => {
+    const at = steps.findIndex(found);
+    assert.ok(at >= 0, `the publish job has no step that ${what}`);
+    return at;
+  };
+  const guard = index('runs the release guard', runs(/release-guard\.mjs/));
+  const tested = index('runs npm test', runs(/^npm test$/));
+  const packed = index('packs once (id: pack)', (step) => step['id'] === 'pack');
+  const attested = index('attests with actions/attest-build-provenance', (step) => /^actions\/attest-build-provenance@[0-9a-f]{40}$/.test(String(step['uses'])));
+  const published = steps.indexOf(publishStep(steps));
+  const verified = index('runs verify-published', runs(/verify-published\.mjs/));
+  const consumed = index('runs pack-and-consume against the published version', runs(/pack-and-consume\.mjs --published/));
+
+  assert.ok(guard < tested && tested < packed && packed < attested && attested < published && published < verified && verified < consumed,
+    `order: guard ${guard}, test ${tested}, pack ${packed}, attest ${attested}, publish ${published}, verify ${verified}, consume ${consumed}`);
+  const packers = steps.filter(runs(/\bnpm pack\b/));
+  assert.equal(packers.length, 1, `the publish job runs npm pack in ${packers.length} steps — exactly one tarball may exist`);
+  assert.equal(packers[0], steps[packed], 'the one npm pack is not the step with id pack');
+  assert.match(String(steps[packed]?.['run']), /tarball=.*>> *"\$GITHUB_OUTPUT"/, 'the pack step does not write tarball= to $GITHUB_OUTPUT');
+});
+
+test('the attested subject, the published tarball and the verified tarball are ONE expression — steps.pack.outputs.tarball — and the commands are exactly the two scripts', () => {
+  const steps = publishSteps(workflow('release.yml'));
+  const attest = steps.find((step) => String(step['uses']).startsWith('actions/attest-build-provenance@'));
+  const publish = publishStep(steps);
+  const verify = steps.find(runs(/verify-published\.mjs/));
+
+  assert.equal(mapAt(attest?.['with'], 'attest with')['subject-path'], PACKED);
+  assert.equal(mapAt(publish['env'], 'publish env')['TARBALL'], PACKED);
+  assert.equal(mapAt(verify?.['env'], 'verify env')['TARBALL'], PACKED);
+  assert.equal(publish['run'], 'node scripts/publish-once.mjs "$TARBALL"');
+  assert.equal(verify?.['run'], 'node scripts/verify-published.mjs --tarball "$TARBALL" --check version --check integrity --check attestation');
+});
+
+test('the job\'s own token is the only credential: NODE_AUTH_TOKEN on exactly the publish, verify and consume steps, GH_TOKEN on the verify step only, each ${{ secrets.GITHUB_TOKEN }}, and neither name anywhere else', () => {
+  const flow = workflow('release.yml');
+  const steps = publishSteps(flow);
+  const at = (step: Map | undefined): string => `release.yml.jobs.publish.steps.${steps.findIndex((candidate) => candidate === step)}.env`;
+  const publish = publishStep(steps);
+  const verify = steps.find(runs(/verify-published\.mjs/));
+  const consume = steps.find(runs(/pack-and-consume\.mjs --published/));
+  const named = (name: string): string[] => stringsWith(flow, 'release.yml', name).concat(keysNamed(flow, 'release.yml', name)).sort();
+
+  assert.deepEqual(named('NODE_AUTH_TOKEN'), [publish, verify, consume].map((step) => `${at(step)}.NODE_AUTH_TOKEN`).sort());
+  assert.deepEqual(named('GH_TOKEN'), [`${at(verify)}.GH_TOKEN`]);
+  for (const step of [publish, verify, consume]) {
+    assert.equal(mapAt(step?.['env'], 'env')['NODE_AUTH_TOKEN'], JOB_TOKEN);
+  }
+  assert.equal(mapAt(verify?.['env'], 'verify env')['GH_TOKEN'], JOB_TOKEN);
+});
+
+test('no run: in any workflow publishes by hand (npm publish), asks for npm provenance (--provenance) or an access level (--access)', () => {
+  const offending = allWorkflows().flatMap((file) => {
+    const jobs = jobsOf(workflow(file), file);
+
+    return Object.entries(jobs)
+      .filter(([id, job]) => mapAt(job, id)['steps'] !== undefined)
+      .flatMap(([id, job]) => stepsOf(mapAt(job, id), id))
+      .filter(runs(/\bnpm publish\b|--provenance|--access/))
+      .map((step) => `${file}: ${String(step['name'] ?? step['run'])}`);
+  });
+
+  assert.deepEqual(offending, [], 'a run: script publishes outside publish-once.mjs, or asks for what GitHub Packages does not take');
 });
 
 test('release.yml: the publish job needs the guard AND its own in-file call of the reusable pack-and-consume workflow', () => {
@@ -88,49 +196,6 @@ test('release.yml: the publish job needs the guard AND its own in-file call of t
   assert.ok(needs.includes(call), `publish needs ${JSON.stringify(needs)}, not the pack-and-consume call "${call}"`);
   assert.ok(needs.includes('guard'), `publish needs ${JSON.stringify(needs)}, not the guard`);
   assert.equal(mapAt(jobs[call], call)['needs'], 'guard', 'pack-and-consume runs only once the guard passed');
-});
-
-test('release.yml: the publish job runs in the GitHub environment "npm", which holds NPM_TOKEN', () => {
-  const publish = mapAt(jobsOf(workflow('release.yml'), 'release.yml')['publish'], 'publish');
-
-  assert.equal(publish['environment'], 'npm');
-});
-
-test('release.yml: NODE_AUTH_TOKEN comes from secrets.NPM_TOKEN on the publish step, and the secret appears nowhere outside the publish job', () => {
-  const flow = workflow('release.yml');
-  const steps = stepsOf(mapAt(jobsOf(flow, 'release.yml')['publish'], 'publish'), 'publish');
-  const step = publishStep(steps);
-
-  assert.equal(step['run'], 'npm publish --provenance --access public');
-  assert.deepEqual(step['env'], { NODE_AUTH_TOKEN: '${{ secrets.NPM_TOKEN }}' });
-  const outside = stringsWith(flow, 'release.yml', 'secrets.NPM_TOKEN').filter((at) => !at.startsWith('release.yml.jobs.publish.steps.'));
-  assert.deepEqual(outside, [], 'secrets.NPM_TOKEN is read outside the publish job\'s steps');
-  const tokens = stringsWith(flow, 'release.yml', 'NODE_AUTH_TOKEN').concat(keysNamed(flow, 'release.yml', 'NODE_AUTH_TOKEN'));
-  assert.deepEqual(tokens, [`release.yml.jobs.publish.steps.${steps.indexOf(step)}.env.NODE_AUTH_TOKEN`], 'NODE_AUTH_TOKEN is set somewhere other than the publish step');
-});
-
-test('release.yml: the publish job first FAILS when NPM_TOKEN is missing, then sets up npmjs as the registry, guards its own checkout, tests, publishes, and verifies after', () => {
-  const steps = stepsOf(mapAt(jobsOf(workflow('release.yml'), 'release.yml')['publish'], 'publish'), 'publish');
-  const index = (what: string, found: (step: Map) => boolean): number => {
-    const at = steps.findIndex(found);
-    assert.ok(at >= 0, `the publish job has no step that ${what}`);
-    return at;
-  };
-  const runs = (pattern: RegExp) => (step: Map): boolean => typeof step['run'] === 'string' && pattern.test(step['run']);
-
-  const check = steps[0] as Map;
-  assert.deepEqual(check['env'], { NPM_TOKEN_SET: "${{ secrets.NPM_TOKEN != '' }}" }, 'the first step decides on the token');
-  assert.match(String(check['run']), /exit 1/, 'a missing token is a red run, never a skip');
-  assert.equal(check['if'], undefined, 'the token check must not be skippable');
-  const setupNode = index('runs actions/setup-node', (step) => String(step['uses']).startsWith('actions/setup-node@'));
-  assert.equal(mapAt(steps[setupNode]?.['with'], 'setup-node with')['registry-url'], 'https://registry.npmjs.org');
-  const guard = index('runs the release guard', runs(/release-guard\.mjs/));
-  const tested = index('runs npm test', runs(/^npm test$/));
-  const published = steps.indexOf(publishStep(steps));
-  const verified = index('runs verify-published', runs(/verify-published\.mjs/));
-  const consumed = index('runs pack-and-consume against the published version', runs(/pack-and-consume\.mjs --published/));
-  assert.ok(setupNode < guard && guard < tested && tested < published && published < verified && published < consumed,
-    `order: setup-node ${setupNode}, guard ${guard}, test ${tested}, publish ${published}, verify ${verified}, consume ${consumed}`);
 });
 
 test('release.yml: the guard job checks the event through the script, with every event value passed as an environment variable', () => {

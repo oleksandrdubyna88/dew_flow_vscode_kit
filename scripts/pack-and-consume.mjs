@@ -6,18 +6,21 @@
  *
  *     node scripts/pack-and-consume.mjs                  # every step; exit 0
  *     node scripts/pack-and-consume.mjs --broken-import  # the teeth: the fixture misspells an import; exit 1 at "typecheck"
- *     node scripts/pack-and-consume.mjs --published [<version>]  # the same steps over the tarball npmjs SERVES (E3.S2)
+ *     node scripts/pack-and-consume.mjs --published [<version>]  # the same steps over the tarball GitHub Packages SERVES (E3.S2)
  *
  * `--published` takes the version from its argument or from `$TARGET` (POST_DEPLOY.md passes it that way),
  * refuses anything but `<major>.<minor>.<patch>` with exit 2, and changes only the first step and the
- * version `install` expects: everything after it is the same check, over the published bytes.
+ * version `install` expects: everything after it is the same check, over the published bytes. GitHub
+ * Packages serves nothing without a token, so it also needs `$NODE_AUTH_TOKEN` — in CI the job's
+ * `GITHUB_TOKEN` with `packages: read`, locally a classic personal access token with `read:packages` — and
+ * an empty one is exit 2 with that said, before any step (`lib/npm.mjs`, `registryEnv`).
  *
  * The steps, each named in the log and in a failure:
  *
  *   pack       `npm pack` from a repository with NO `dist/` — this script removes it first, so only the
  *              `prepack` script (`npm run build`) can put it into the tarball (epic 3 plan round, finding 1).
- *              With `--published`: `npm pack <name>@<version>` in the temporary directory, asked
- *              anonymously (`lib/npm.mjs`), which DOWNLOADS the registry's tarball and builds nothing.
+ *              With `--published`: `npm pack <name>@<version>` in the temporary directory, asked of GitHub
+ *              Packages with the token (`lib/npm.mjs`), which DOWNLOADS the registry's tarball and builds nothing.
  *   contents   the tarball, read here byte by byte (gunzip + tar headers, not npm's summary): it carries
  *              `dist/index.js`, `dist/index.d.ts` and every `bin` target, and nothing the manifest's `files`
  *              and npm's own three (`package.json`, `README.md`, `LICENSE`) do not name; `dist/` holds only
@@ -58,7 +61,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { gunzipSync } from 'node:zlib';
 
-import { anonymousEnv, childEnv, npmCli as findNpmCli } from './lib/npm.mjs';
+import { childEnv, npmCli as findNpmCli, registryEnv } from './lib/npm.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const FIXTURE = join(ROOT, 'test', 'consumer-fixture');
@@ -137,7 +140,7 @@ function admitted(path) {
 /** `npm pack` here, from a repository with no dist/ — or, with --published, the registry's tarball. */
 function packInto(ctx, destination) {
   if (ctx.published) {
-    npm(['pack', `${MANIFEST.name}@${ctx.version}`, '--pack-destination', destination], ctx.temp, 'npm pack of the published version', anonymousEnv(ctx.temp));
+    npm(['pack', `${MANIFEST.name}@${ctx.version}`, '--pack-destination', destination], ctx.temp, 'npm pack of the published version', ctx.registry);
     return;
   }
   // No dist/: only prepack can put one into the tarball.
@@ -309,6 +312,25 @@ function readArguments(argv, env) {
   return { brokenImport, published, version };
 }
 
+/**
+ * With --published, the environment npm asks GitHub Packages in — built BEFORE the first step, so a missing
+ * token is exit 2 with its message on stderr and nothing on stdout, never a "pack" step failing with a 401.
+ * Answers the exit code to stop with, or undefined to go on.
+ */
+function openRegistry(ctx) {
+  if (!ctx.published) {
+    return undefined;
+  }
+  try {
+    ctx.registry = registryEnv(ctx.temp, MANIFEST);
+  } catch (error) {
+    process.stderr.write(`pack-and-consume: ${error.message}\n`);
+    return 2;
+  }
+
+  return undefined;
+}
+
 /** Run the steps in order; the first failure stops the run. Answers the exit code. */
 async function main() {
   const args = readArguments(process.argv.slice(2), process.env);
@@ -320,6 +342,10 @@ async function main() {
   const ctx = { temp: mkdtempSync(join(tmpdir(), 'kit-pack-and-consume-')), published: args.published, version: args.version };
   const started = Date.now();
   try {
+    const refused = openRegistry(ctx);
+    if (refused !== undefined) {
+      return refused;
+    }
     for (const { name, run } of steps(brokenImport)) {
       const begun = Date.now();
       try {

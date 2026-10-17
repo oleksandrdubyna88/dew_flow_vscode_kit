@@ -3,7 +3,8 @@
 > Status: **in progress, 2026-10-02** — epic 1 and epic 2 (E2.S1, E2.S2, E2.S3) have landed on their
 > branches, and E3.S1 (the pre-publish consumer fixture) and E3.S2 (release-please and `release.yml`, no
 > credential used yet) on epic 3's; epic 3's code round, DoD part B (the first credentialed release, after
-> the owner's one-time setup) and the consumer switches are open. Nothing is published. Scope: this
+> the owner's one-time setup) and the consumer switches are open. Nothing is published, and since
+> 2026-10-16 the first publish goes to GitHub Packages, not npmjs (see the deviation under E3.S2). Scope: this
 > repository's first release,
 > `@oleksandrdubyna88/vscode-webview-kit` 0.1.0, and the switch of its two consumers.
 >
@@ -20,8 +21,9 @@ package both extensions consume.**
 
 What must be true when this plan is done:
 
-1. The package builds to CommonJS + `.d.ts`, has **no runtime dependencies**, and is published to npmjs
-   from CI with provenance as 0.1.0.
+1. The package builds to CommonJS + `.d.ts`, has **no runtime dependencies**, and is published to GitHub
+   Packages from CI with a GitHub artifact attestation as **0.1.1** (0.1.0 was tagged but its publish to npmjs
+   failed with E403, so it never reached a registry — deviation under E3.S2, 2026-10-16).
 2. For ConnectOtherAIs' own configuration (`coai`, `ConnectOtherAIs`, CSS prefix `coai`) every pure
    function returns **byte-identical** output to the coai source of 2026-10-02 (`1056aed9`), proved by
    tests that hold the kit's output against literals copied from that source.
@@ -89,7 +91,9 @@ after a deliberate re-translation.
    coverage helpers a consumer can call (`everyArticleInEveryLanguage(catalog)`), the page script run
    (index ↔ article, search, Back, Escape, language post).
 6. `release-please` (`node`, component-less tag `v0.1.0`), `release.yml` publishing with
-   `npm publish --provenance --access public` (secret `NPM_TOKEN`), README usage.
+   `npm publish --provenance --access public` (secret `NPM_TOKEN`), README usage. *(Superseded 2026-10-16:
+   GitHub Packages, the job's `GITHUB_TOKEN`, an artifact attestation — see
+   [PLAN_publish_to_github_packages.md](PLAN_publish_to_github_packages.md).)*
 7. Consumer PR in ConnectOtherAIs; consumer use in wsl_care.
 
 ## 4. Test plan
@@ -149,7 +153,7 @@ webview→host trust boundary, publishing credentials).
 |---|---|---|---|---|
 | 1 | Foundation and the pure modules | `feat/kit-e1-foundation-pure` | `main` @ `34338f4` | `npm ci && npm run typecheck && npm run lint && npm test && npm run build` green on ubuntu-latest AND windows-latest; `dist/` is CommonJS + `.d.ts`; zero runtime dependencies; `text`, `webview`, `settings`, `display/zoom`, `display/tone` ported and byte-identical to coai `1056aed9` for coai's config, proved with teeth; page scripts RUN in a deny-by-default `node:vm` harness; rendered output asserted CR-free |
 | 2 | Host ports and the help subsystem | `feat/kit-e2-host-help` | E1's merge commit | `display/host`, `help/catalog`, `help/digest`, `help/page`, `help/panel` behind narrow ports with strict fakes; every webview message validated host-side; CSP nonce per render; stale-translation detection with `{ bodies, from }`; `src/index.ts` exports the whole 0.1.0 API; README "Use" |
-| 3 | Release pipeline and 0.1.0 | `feat/kit-e3-release` | E2's merge commit | the pre-publish job packs, installs into a consumer fixture and bundles with esbuild on both OSes; `release.yml` publishes with provenance only after it; `v0.1.0` tagged by release-please; `npm view` prints `0.1.0`; POST_DEPLOY 1–2 pass; research docs describe what shipped |
+| 3 | Release pipeline and 0.1.0 | `feat/kit-e3-release` | E2's merge commit | the pre-publish job packs, installs into a consumer fixture and bundles with esbuild on both OSes; `release.yml` publishes with provenance only after it; `v0.1.0` tagged by release-please; `npm view` prints `0.1.0`; POST_DEPLOY 1–2 pass; research docs describe what shipped *(2026-10-16: published to GitHub Packages with an attestation as 0.1.1 instead — see E3.S2)* |
 
 ### Epic 1 — Foundation and the pure modules
 
@@ -331,6 +335,26 @@ webview→host trust boundary, publishing credentials).
   owner's setup (README "What the owner creates once"), the first run of each workflow, and trusted
   publishing.
 
+  **Deviation, 2026-10-16 — the registry changed.** The v0.1.0 release run 38925094342 failed twice at `npm
+  publish` with E403 (*"Two-factor authentication or granular access token with bypass 2fa enabled is
+  required"*); nothing reached any registry, and the tag `v0.1.0` and its GitHub release stay where they are.
+  npmjs + `NPM_TOKEN` + `--provenance` is replaced by **GitHub Packages (`npm.pkg.github.com`) + the job's own
+  `GITHUB_TOKEN` + a GitHub artifact attestation** (`actions/attest-build-provenance` over the ONE packed
+  tarball, which `scripts/publish-once.mjs` then publishes; `verify-published.mjs` proves the served bytes are
+  the attested bytes). No npm token exists any more; the `npm` environment holds only its `v*` tag rule.
+  Everything above that names npmjs, `NPM_TOKEN`, `--provenance` or `anonymousEnv` describes what was built
+  first and is superseded by [PLAN_publish_to_github_packages.md](PLAN_publish_to_github_packages.md), which
+  records the new flow, its tests and its first-release observations. The first version a registry serves
+  becomes **0.1.1**. **The boundary between the two plans:**
+
+  | Item | Built by | The other plan's part |
+  |---|---|---|
+  | registry, attestation, verification, docs of the publish path | PLAN_publish_to_github_packages | this plan records the switch as a deviation of E3.S2 |
+  | the first credentialed release (0.1.1) and the POST_DEPLOY stamp | this plan, DoD B | PLAN_publish_to_github_packages only makes it possible |
+  | consumer switches (coai, wsl_care) | this plan, DoD C / the consumers' own plans | PLAN_publish_to_github_packages documents the consumer setup they need (README "Use") |
+
+  Order: that plan lands first; DoD B then runs on 0.1.1. Disjoint otherwise.
+
 **Order and what is left to the consumers.** E1 → E2 → E3 strictly; publishing finishes before any
 consumer switches. The ConnectOtherAIs switch (its consumer-level tests, the `stampTranslations`
 bootstrap of its four translation modules, deleting the moved modules) and wsl_care's first extension
@@ -358,9 +382,9 @@ commit are pull requests in those repositories.
 
 **B — first credentialed release (after the owner adds `NPM_TOKEN` to the `npm` environment and the release-please App secrets):**
 
-- [ ] 0.1.0 published from CI with provenance; `npm view @oleksandrdubyna88/vscode-webview-kit` shows it and `npm audit signatures` verifies it.
+- [ ] 0.1.1 published to GitHub Packages from CI with an artifact attestation (0.1.0 never reached a registry); `npm view @oleksandrdubyna88/vscode-webview-kit` against the GitHub registry shows it, and `node scripts/verify-published.mjs 0.1.1` verifies the served bytes and the attestation identity — see [PLAN_publish_to_github_packages.md](PLAN_publish_to_github_packages.md).
 - [ ] On a failed publish: nothing is retagged, the cause is fixed on `main`, and the next release-please PR cuts 0.1.1 — the order in §6.
-- [ ] Trusted publishing bound to the identity above; the token removed.
+- [ ] ~~Trusted publishing bound to the identity above; the token removed.~~ **Superseded 2026-10-16:** the package no longer goes to npmjs, so there is nothing to bind and no npm token to remove; the attestation gives the who-built-it evidence without a token. The reason: the E403 of run 38925094342.
 - [ ] This plan promoted to `research/`.
 
 **C — consumer switches (their own plans, after B):**

@@ -1,12 +1,15 @@
 name: release
 
 # ---------------------------------------------------------------------------
-# PUBLISHES `@oleksandrdubyna88/vscode-webview-kit` TO npm, with provenance, and nothing else does.
+# PUBLISHES `@oleksandrdubyna88/vscode-webview-kit` TO GitHub Packages (npm.pkg.github.com), with a GitHub
+# artifact attestation, and nothing else does. It publishes with the job's own `GITHUB_TOKEN`; there is no
+# npm token anywhere (the release that tried npmjs, run 38925094342, failed with E403, and that plan is
+# superseded: `todo/PLAN_publish_to_github_packages.md`).
 #
 # Started ONLY by a published GitHub release — the one release-please cuts when its release pull
 # request merges (`release-please.yml`, with the App token: a release made with `GITHUB_TOKEN` would
 # start nothing). There is no `pull_request`, `push` or `workflow_dispatch` trigger, so no pull request —
-# a fork's included — can reach the publish job, its `id-token`, or the npm token
+# a fork's included — can reach the publish job, its `id-token`, or its `packages: write`
 # (`src/test/releaseWorkflows.test.ts` fails the suite if one appears).
 #
 #   guard             the event is that release: tag exactly `v<major>.<minor>.<patch>`, made by a bot (the
@@ -15,14 +18,21 @@ name: release
 #   pack-and-consume  the reusable workflow ci.yml runs on every pull request, on ubuntu AND windows, at
 #                     the tag: the PACKED tarball installs, type-checks, bundles and runs in a consumer
 #   publish           needs BOTH, so one red leg publishes nothing (common.development-workflow, "a release
-#                     that shipped SOME of its platforms"); environment `npm` holds `NPM_TOKEN`; this job
-#                     alone has `id-token: write`; it re-checks the guard on its own checkout, runs the
-#                     suite, publishes, then verifies what npmjs SERVES, anonymously
+#                     that shipped SOME of its platforms"); environment `npm` holds no secret, only the
+#                     `v*`-tag deployment rule; this job alone has `packages: write`, `id-token: write` and
+#                     `attestations: write`. It re-checks the guard on its own checkout, runs the suite, then
+#                     packs ONCE, attests that tarball, publishes THAT tarball (once), verifies that what
+#                     GitHub Packages SERVES is the attested tarball, and consumes it in the fixture
 #
-# A FAILED PUBLISH IS FIXED FORWARD (plan §6.5): the tag and the GitHub release stay where they are and
-# are never moved or deleted; the cause is fixed on main and the next release-please pull request cuts
-# the next patch, whose tag publishes. A run that failed before `npm publish` may be RE-RUN as it is.
-# Re-running after a successful publish fails closed — npm refuses to publish over an existing version.
+# `npm publish <tarball>` runs NO lifecycle script (npm runs `prepublishOnly` only for a directory spec),
+# so what guards the published bytes is this job's own `npm test` and the `prepack` build inside the pack
+# step.
+#
+# A RE-RUN after a successful publish publishes nothing and still verifies (`scripts/publish-once.mjs`): the
+# verify step then decides whether the served bytes are THIS run's attested bytes. A FAILED PUBLISH IS FIXED
+# FORWARD (PLAN_extract_the_kit §6.5): the tag and the GitHub release stay where they are and are never moved or deleted; the
+# cause is fixed on main and the next release-please pull request cuts the next patch, whose tag publishes. A
+# version that is served but is not the attested bytes is a bad release, fixed forward the same way.
 # ---------------------------------------------------------------------------
 
 on:
@@ -79,49 +89,36 @@ jobs:
     uses: ./.github/workflows/pack-and-consume.yml
 
   publish:
-    name: release · publish to npm
+    name: release · publish to GitHub Packages
     needs: [guard, pack-and-consume]
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # The environment holds NPM_TOKEN, so only a job naming it can read the secret. Its deployment rule
-    # (README, "What the owner creates once") admits `v*` tags only — a second fence, owned by GitHub's
-    # settings rather than by this file.
+    # No secret lives here any more. The environment's deployment rule (README, "What the owner creates
+    # once") admits `v*` tags only — a fence owned by GitHub's settings rather than by this file.
     environment: npm
     permissions:
       contents: read
+      # Publishes to (and, write ⊇ read, reads back from) GitHub Packages with the job's own token.
+      packages: write
       # Signs the provenance statement through GitHub's OIDC issuer — here and in no other job.
       id-token: write
+      # Stores the attestation on this repository (write ⊇ read: the verify step reads it back).
+      attestations: write
     steps:
-      # FAIL LOUDLY, never skip: a release with no npm token must be a red run that says so, not a green
-      # one that published nothing. The token never reaches the environment of this step — only `true` or
-      # `false` does.
-      - name: NPM_TOKEN must be set in the npm environment
-        env:
-          NPM_TOKEN_SET: ${{ secrets.NPM_TOKEN != '' }}
-        run: |
-          if [ "$NPM_TOKEN_SET" = "true" ]; then
-            echo "release: NPM_TOKEN present in the npm environment."
-            exit 0
-          fi
-          echo "::error::release: NPM_TOKEN is not set in the 'npm' environment, so nothing can be published."
-          echo "  Create the environment 'npm' (Settings > Environments) and add NPM_TOKEN to it as an" >&2
-          echo "  ENVIRONMENT secret — a repository secret is not what this job reads (README, 'Release and" >&2
-          echo "  rollback'). Then re-run this run: nothing was published, so the tag is still good." >&2
-          exit 1
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.ref }}
           fetch-depth: 0
           persist-credentials: false
 
-      # `registry-url` writes the .npmrc that reads NODE_AUTH_TOKEN — the variable npm uses; `NPM_TOKEN` is
-      # only the secret's name. No `cache:` in the job that publishes: the bytes it publishes are built from
-      # `npm ci` against the lockfile and nothing restored from another run.
+      # `registry-url` + `scope` write the .npmrc that `npm ci`, `npm pack` and `npm publish` in THIS job read
+      # (exported as NPM_CONFIG_USERCONFIG); the scripts' own npm children read registryEnv's file instead
+      # (plan §3, precedence). No `cache:`: the published bytes come from `npm ci` against the lockfile.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
-          registry-url: https://registry.npmjs.org
+          registry-url: https://npm.pkg.github.com
+          scope: '@oleksandrdubyna88'
 
       # Again, on THIS checkout: the job that publishes verifies what it is about to publish.
       - id: guard
@@ -139,25 +136,54 @@ jobs:
       - name: Test
         run: npm test
 
-      # `prepack` rebuilds dist/ and `prepublishOnly` runs build and test once more, inside the publish.
-      # `--provenance` makes npm sign a SLSA statement naming this repository, this workflow file and
-      # the tag; `--access public` because a scoped package is private by default.
-      - name: Publish with provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --provenance --access public
+      # ONE tarball (`prepack` builds dist/ inside it), into the runner's temp folder, its path a step OUTPUT:
+      # the attest step, the publish step and the verify step all name THIS output, so there is no second
+      # archive to confuse with it. Exactly one .tgz, or the run is red here.
+      - id: pack
+        name: Pack once — the one tarball that is attested, published and verified
+        run: |
+          set -euo pipefail
+          dest="$RUNNER_TEMP/release"
+          mkdir -p "$dest"
+          npm pack --pack-destination "$dest"
+          set -- "$dest"/*.tgz
+          if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
+            echo "::error::release: npm pack left $# tarball(s) in $dest, not exactly one"
+            exit 1
+          fi
+          echo "tarball=$1" >> "$GITHUB_OUTPUT"
 
-      # What npmjs SERVES, asked anonymously: the version, the provenance statement's identity (this
-      # repository, release.yml, refs/tags/v<version>) and its digest, and `npm audit signatures` in a
-      # throwaway install. The same script is POST_DEPLOY.md's items 1–3.
-      - name: Verify on the registry — version, provenance identity, signatures
+      # SLSA v1 provenance of that tarball, signed with this job's OIDC token (identity: this repository,
+      # release.yml, refs/tags/v<version>, github-hosted) and stored on the repository. Before the publish:
+      # a tarball that cannot be attested is never published.
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: ${{ steps.pack.outputs.tarball }}
+
+      # Publishes NOTHING when <name>@<version> is already served (a re-run after a publish that succeeded;
+      # plan round finding 0) and says so; otherwise `npm publish <that tarball>`. Either way the next step
+      # decides whether the served bytes are THIS run's attested bytes.
+      - name: Publish, once
         env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+        run: node scripts/publish-once.mjs "$TARBALL"
+
+      # What GitHub Packages SERVES: the version; the served tarball's sha512 = dist.integrity = the attested
+      # file's; `gh attestation verify` of the SERVED bytes against the exact identity, read back from gh's
+      # JSON, never trusted from the flags alone. Visibility is POST_DEPLOY's (needs read:packages).
+      - name: Verify what GitHub Packages serves — version, integrity (served = attested), attestation identity
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARBALL: ${{ steps.pack.outputs.tarball }}
           TARGET: ${{ steps.guard.outputs.version }}
-        run: node scripts/verify-published.mjs
+        run: node scripts/verify-published.mjs --tarball "$TARBALL" --check version --check integrity --check attestation
 
-      # The consumer fixture against the PUBLISHED tarball (POST_DEPLOY.md item 4): downloaded from npmjs,
-      # read, installed, type-checked, bundled and run — the same steps the pre-publish check took.
+      # The consumer fixture against the PUBLISHED tarball (POST_DEPLOY.md item 5): downloaded from GitHub
+      # Packages, read, installed, type-checked, bundled and run — the same steps the pre-publish check took.
       - name: The consumer fixture against the published version
         env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGET: ${{ steps.guard.outputs.version }}
         run: node scripts/pack-and-consume.mjs --published

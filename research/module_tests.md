@@ -125,15 +125,23 @@ every pull request:
   output on a sample, each refusal, and that every workflow in `.github/workflows` parses with a known
   instance still found (ci.yml's matrix).
 - `src/test/releaseWorkflows.test.ts` — over the parsed workflows: `release.yml`'s only trigger is
-  `release: published`; its top-level token reads contents and `id-token: write` sits on the publish job
-  alone; publish `needs:` the guard and the in-file call of `./.github/workflows/pack-and-consume.yml`, which
-  itself needs the guard; publish runs in environment `npm`; the publish step is exactly `npm publish
-  --provenance --access public` with `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}`, and neither name appears
-  outside the publish job; the publish job's FIRST step decides on `secrets.NPM_TOKEN != ''`, exits 1 and has
-  no `if:`; the order setup-node (`registry-url: https://registry.npmjs.org`) → guard → `npm test` → publish →
-  verify and the published consumer fixture; no expression is pasted into a `run:` in either release
-  workflow; no other workflow is started by a release, holds `id-token` or reads `NPM_TOKEN`; the reusable
-  workflow has no pull-request trigger; `release-please.yml` runs on pushes to `main` and by hand only,
+  `release: published`; its top-level token reads contents; the publish job's permissions are EXACTLY
+  `contents: read`, `packages: write`, `id-token: write`, `attestations: write`, and `packages`, `id-token`
+  and `attestations` are keys nowhere else in any workflow; publish `needs:` the guard and the in-file call of
+  `./.github/workflows/pack-and-consume.yml`, which itself needs the guard; publish runs in environment `npm`,
+  which holds no secret — its `v*` tag rule is the fence; no npm token is named in any workflow, any
+  `.github/scripts` file, anything under `scripts/` or `package.json`; setup-node's `registry-url` is
+  `package.json`'s `publishConfig.registry` (`https://npm.pkg.github.com`) and its `scope` the scope of the
+  name; the order guard → `npm test` → pack (`id: pack`, the job's ONE `npm pack`, writing `tarball=` to
+  `$GITHUB_OUTPUT`) → `actions/attest-build-provenance@<sha>` → publish → verify → consume; the attest
+  step's `subject-path`, the publish step's `TARBALL` and the verify step's `TARBALL` are ONE expression
+  (`steps.pack.outputs.tarball`), the publish run being exactly `node scripts/publish-once.mjs "$TARBALL"` and
+  the verify run exactly `node scripts/verify-published.mjs --tarball "$TARBALL" --check version --check
+  integrity --check attestation`; `NODE_AUTH_TOKEN` is set on exactly the publish, verify and consume steps
+  and `GH_TOKEN` on the verify step only, each `${{ secrets.GITHUB_TOKEN }}`; no `run:` anywhere says `npm
+  publish`, `--provenance` or `--access`; no expression is pasted into a `run:` in either release workflow;
+  no other workflow is started by a release, holds `id-token` or reads an npm token; the reusable workflow
+  has no pull-request trigger; `release-please.yml` runs on pushes to `main` and by hand only,
   checks the two App secrets first, mints with them and hands that token to release-please; every action in
   every workflow is pinned to a 40-hex SHA with a `# v…` comment and every checkout drops its credentials;
   no pull-request event starts a release workflow; pr-title.yml runs the docs-only step with the title as
@@ -142,7 +150,9 @@ every pull request:
   draft; before the first release the manifest is empty and `initial-version` is package.json's version,
   from the release pull request on the manifest names package.json's version — and a manifest that names a
   version must come with release-please's `CHANGELOG.md` section for it (a check on files, not on git tags: a
-  CI checkout has none); `repository.url` names this repository (npm checks provenance against it);
+  CI checkout has none); `repository.url` names this repository (GitHub Packages links the package to the
+  repository through it); `publishConfig.registry` is `https://npm.pkg.github.com` and the package's scope is
+  `@` + the owner parsed from `repository.url` (the only scope GitHub Packages takes);
   `exclude-paths` is `[".github"]` and a directory; every type pr-title.yml accepts has a changelog section,
   and a section is visible exactly when `docs-only-title.mjs` calls its type releasing (asked by RUNNING the
   script per type, not retyped).
@@ -150,20 +160,51 @@ every pull request:
   cuts for this package.json passes (name and version read from package.json); eleven ways a run is not that
   release are each refused with their own reason; all refusals are listed; malformed facts exit 2; and
   `--facts` mode never writes `$GITHUB_OUTPUT` (pointed at a real file to see it).
-- `src/test/verifyPublished.test.ts` — `scripts/verify-published.mjs --facts` over facts RECORDED from the
-  registry for a real provenance-published package (`@sigstore/core@3.0.0`, by the script's own `gather()`,
-  trimmed to what the decision reads — `fixtures/verify-published-sigstore-core-3.0.0.json`): it passes as
-  recorded; another repository, workflow path and ref are each named; a changed `dist.integrity` breaks the
-  sha512 binding; a subject for another version is refused; no attestation (a laptop publish) is refused;
-  an unserved version is refused; an audit without the attestation line, or exiting 1, is refused;
-  `--check` runs only the named check; usage errors exit 2.
+- `src/test/verifyPublished.test.ts` — `scripts/verify-published.mjs --facts` over facts built around a REAL
+  attestation (`fixtures/verify-published-github-packages.json`, recorded 2026-10-16). **Real:** the verbatim
+  `gh attestation verify --format json` output (gh 2.97.0, exit 0, `--repo cli/cli --cert-identity …/deployment.yml@refs/heads/trunk
+  --source-ref refs/heads/trunk --deny-self-hosted-runners`) for the asset `gh_2.97.0_linux_armv6.tar.gz` of
+  `cli/cli` v2.97.0 — certificate whole, the statement's 21 subjects whole, only `bundle` and `predicate`
+  trimmed — and the sha256 and sha512 hashed from that file (the sha256 is the recorded subject digest, which
+  is what makes "passes" a real pass). **Built, in the documented shape:** the GitHub Packages packument
+  (`view`, whose `dist.integrity` is that file's real sha512) and the packages REST answer (`visibility`) —
+  neither can be recorded before a package exists, and this machine's gh login lacks `read:packages`. The
+  record passes all four checks; each refusal is that record with ONE fact changed, and names why: a served
+  sha512 that is not `dist.integrity`; a `--tarball` that is not the served one (attesting one archive and
+  publishing another); no `--tarball` (the integrity check still passes); a packument with no sha512
+  integrity; a gh exit ≠ 0 with its stderr; a certificate of another repository/workflow, of another ref, of a
+  self-hosted runner; a statement that is not SLSA v1; a subject sha256 that is not the served file's; no
+  entry at all; the conditions met by DIFFERENT entries (`no single entry meets every condition`); a
+  private package (the message names the owner's click); an unserved version; `--check` runs only what it
+  names and is repeatable; usage errors (no version, `v0.1.1`, two versions, an unknown check, a missing
+  `--tarball`, `--facts` with `--tarball`) exit 2 with nothing asked; an empty `NODE_AUTH_TOKEN` exits 2
+  naming both token kinds before the registry is asked (a 5 s budget, so a script that skips the check shows
+  as a kill, not a hang); the sentinel token never appears in any output.
+- `src/test/publishOnce.test.ts` — `scripts/publish-once.mjs`: through `--facts`, a version the registry
+  already serves publishes NOTHING (exit 0, "the verify step decides…"); a version it does not serve, or an
+  answer naming another version, publishes that tarball by name; usage (no tarball, two, a missing file, a
+  file named other than `npm pack` names it) exits 2 with nothing on stdout; an empty `NODE_AUTH_TOKEN` exits
+  2 naming both token kinds before the registry is asked; the sentinel token is never printed.
+- `src/test/npmEnv.test.ts` — `registryEnv` in `scripts/lib/npm.mjs`, run in a `node --input-type=module`
+  child with an explicit environment: the user config is exactly two lines derived from the manifest it is
+  given (a different scope/registry proves derivation; the real `package.json` gives GitHub Packages and its
+  own scope); with a sentinel token set the file holds the literal `${NODE_AUTH_TOKEN}` and never the
+  sentinel; an upper-case `NPM_CONFIG_USERCONFIG` and any `npm_config_*` of the parent do not survive; an
+  empty or unset token throws before any file is written, and is checked FIRST; the registry is pinned —
+  another host, `http`, a double trailing slash, a path or an empty value are refused naming the value seen
+  and `https://npm.pkg.github.com`, one trailing slash is accepted and written without it; a scope that is
+  not the repository owner is refused naming both; `repositoryOwnerAndName` reads a `git+` prefix, `.git`,
+  `github:o/r`, trailing slashes, a string or an object, and refuses other shapes. Still not covered: the
+  `publish-once.mjs` retry line ("the registry's answer was not understood …"), which needs a real registry
+  answer that is neither a version nor an `E404`.
 - `src/test/docsOnlyTitle.test.ts` — coai's `docs-only-title.mjs` tests, ported and adapted to the root
   package: every releasing type over README.md alone refused, plans and research notes included, `docs:`
   passes, pictures are documentation and a picture beside code is code, a `.github`-only change is not
   refused while a README riding with it is, a Markdown-only releasing COMMIT under a `docs:` title is
   refused, unreadable facts exit 2.
 - `src/test/packaging.test.ts` gained the `--published` usage cases: no version, `v0.1.0`, `0.1`, two
-  versions and a stray positional all exit 2 with nothing on stdout — no step started.
+  versions and a stray positional all exit 2 with nothing on stdout — no step started — and `--published
+  0.1.1` with an empty `NODE_AUTH_TOKEN` exits 2 naming both token kinds, before any step.
 
 **actionlint** (`rhysd/actionlint:1.7.12`, whose image carries shellcheck 0.11.0 — shown live by a control
 workflow it flagged for SC2086 and an untrusted expression) reports 0 errors over all six workflows. It is
@@ -196,12 +237,14 @@ run by hand (`docker run --rm -v <repo>:/repo -w /repo rhysd/actionlint:1.7.12`)
 | **`help-digests` reaches consumers**: the manifest names the bin `vscode-webview-kit-help-digests` → `scripts/help-digests.mjs` and lists it in `files`; `npm pack --dry-run` carries it and otherwise only `dist/`, the manifest, README and LICENSE; run from an installed layout with no `--kit` it uses that package's own `dist/` (exit 1 with the lines; exit 0 when fresh); it starts with a node shebang | covered | `src/test/packaging.test.ts` — red first before `package.json` changed: the bin was `undefined` and the pack lacked the script. Teeth: resolving the default kit from the cwd turns the installed-layout run red |
 | **The packed tarball is what a consumer gets** (E3.S1): `npm pack` from a repository with no `dist/` carries `dist/index.js`, `dist/index.d.ts` and the bin script, built by `prepack`, and nothing unexpected; `npm install` of it offline installs this manifest's version; the fixture type-checks against the INSTALLED `.d.ts` under `node16` / `skipLibCheck: false`; esbuild bundles it with the extensions' flags from inside the copy only; the bundle RUNS under the `vscode` stub — help page under a CSP nonce, a press validated and written once through the stub configuration and pushed back, refused messages writing nothing, a language re-render under a fresh nonce, the escapers, every listener unhooked; the installed bin answers through `npm exec` (and the `.bin` link on POSIX) | covered | `src/test/packaging.test.ts` → `scripts/pack-and-consume.mjs` over `test/consumer-fixture/`. Red first for finding 1 (epic 3 plan round): before `prepack` existed the run stopped at `contents` — *the tarball lacks dist/index.js, dist/index.d.ts — did prepack build dist/? It carries: LICENSE, README.md, package.json, scripts/help-digests.mjs*. Teeth: writing to `ConfigurationTarget.Workspace` in the fixture's adapter fails `run` (`+ target: 2, - target: 1`); marking the kit external in the bundle fails `run` (*the bundle required "@oleksandrdubyna88/vscode-webview-kit" at run time*); each file restored and checked by SHA-256 |
 | **A misspelled import fails the pipeline AT THE TYPECHECK** (`--broken-import`: `createDisplayHots`): exit 1, `FAILED at step "typecheck"` naming the name — TS2724 *has no exported member named 'createDisplayHots'. Did you mean 'createDisplayHost'?* — after `install` passed, and nothing after it runs | covered | `src/test/packaging.test.ts` — red first against the script with its typecheck step removed: the test failed with *FAILED at step "run": … TypeError: (0 , import_vscode_webview_kit2.createDisplayHots) is not a function* — esbuild bundles a missing named import from a CommonJS module without a word, so without the typecheck the misspelling surfaces only when the extension activates. Step restored, SHA-256 identical, green |
-| **Only a published release reaches the publish job, its `id-token` and the npm token** (E3.S2; epic 3 plan round, finding 6): `release.yml`'s one trigger is `release: published`; `id-token: write` on the publish job alone; `secrets.NPM_TOKEN` and `NODE_AUTH_TOKEN` nowhere outside it; environment `npm`; no pull-request event starts any release workflow; no expression pasted into a `run:` | covered | `src/test/releaseWorkflows.test.ts`. Teeth, each a one-edit break of the real file, restored and checked by SHA-256 (`6ef66ae6…` every time): a `pull_request:` trigger (2 red: *Expected values to be strictly deep-equal*, `['pull_request', 'release']`); `id-token: write` on the guard job, and at the top level (each: the id-token test red); `environment: npm` removed (red); `NPM_TOKEN` handed to a guard step (*secrets.NPM_TOKEN is read outside the publish job's steps*); the tag name pasted into the guard's `run:` (2 red: *the guard job does not run release-guard.mjs*, and the pasted-expression test) |
-| **The publish job depends on the WHOLE pre-publish check and fails loudly without a token** (findings 0 and 3): `needs:` the guard and the in-file call of the reusable pack-and-consume workflow; first step decides on `secrets.NPM_TOKEN != ''`, exits 1, cannot be skipped; `registry-url: https://registry.npmjs.org`; guard → test → `npm publish --provenance --access public` with `NODE_AUTH_TOKEN` → verify → the published consumer fixture | covered | `src/test/releaseWorkflows.test.ts`. Teeth: `needs: [guard]` (*publish needs ["guard"], not the pack-and-consume call "pack-and-consume"*); `NODE_AUTH_TOKEN` removed from the step (red); `if: ${{ false }}` on the token check (*the token check must not be skippable*); no `registry-url` (red); `--provenance` dropped (red); `actions/setup-node@v7` (*…steps.2.uses is not pinned to a commit: actions/setup-node@v7*); a checkout without `persist-credentials: false` (*…guard.steps.0.uses keeps its credentials*) |
+| **Only a published release reaches the publish job, its `id-token`, its `packages: write` and its `attestations: write`; no npm token exists** (E3.S2, rewritten for GitHub Packages 2026-10-16): `release.yml`'s one trigger is `release: published`; the publish job's permissions are exactly `contents: read`, `packages: write`, `id-token: write`, `attestations: write`, and those three keys are nowhere else in any workflow; `NODE_AUTH_TOKEN` only on the publish, verify and consume steps and `GH_TOKEN` only on verify, each `secrets.GITHUB_TOKEN`; the environment `npm` is kept; no pull-request event starts any release workflow; no expression pasted into a `run:`; no npm token named in any workflow, script or `package.json` | covered | `src/test/releaseWorkflows.test.ts`. Teeth, each a one-edit break of the real file observed red and restored `cmp`-identical to a saved copy: `packages: write` added to the guard job (*release.yml: where "packages" is granted*); `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}` on the publish step (2 red: *a file still names the npm token the publish no longer uses*, and the one-credential test); `environment: npm` removed (red: *Expected values to be strictly equal*); earlier, in the E3.S2 round: a `pull_request:` trigger (2 red), the tag name pasted into the guard's `run:` (2 red) |
+| **The publish job packs ONE tarball and attests, publishes and verifies that same tarball** (2026-10-16): guard → `npm test` → pack (`id: pack`, the job's only `npm pack`, `tarball=` to `$GITHUB_OUTPUT`) → `actions/attest-build-provenance@<sha>` → `publish-once.mjs` → `verify-published.mjs --tarball` → the published consumer fixture; the attest `subject-path`, the publish `TARBALL` and the verify `TARBALL` are ONE expression, `steps.pack.outputs.tarball`; setup-node's `registry-url` and `scope` are `package.json`'s `publishConfig.registry` and the scope of its name | covered | `src/test/releaseWorkflows.test.ts`. Teeth, each observed red and restored identical: the attest step moved after the publish step (*order: guard 2, test 4, pack 5, attest 7, publish 6, verify 8, consume 9*); `registry-url: https://registry.npmjs.org` (*registry-url is not package.json's publishConfig.registry*); the publish step's `TARBALL` another path (*Expected values to be strictly equal*); a second `npm pack` in the verify step's run (2 red: *the publish job runs npm pack in 2 steps — exactly one tarball may exist*, and the exact-run test) |
+| **A publish that already happened is not repeated, and the verify step still decides** (2026-10-16): a version the registry serves publishes NOTHING (exit 0); one it does not serve, or an answer naming another version, publishes that tarball by name; usage and an empty token exit 2 before the registry is asked; the token is never printed | covered | `src/test/publishOnce.test.ts`, red first: *Cannot find module '…/scripts/publish-once.mjs'* in all five. Teeth: `decide` always `publish` (B1 red: the served line did not match); always `skip` (2 red: the not-served line did not match); `registryEnv` moved after the registry question (*a registry question reached stdout before the token was checked*) |
+| **`registryEnv` writes the token REFERENCE, never the value** (2026-10-16): two lines derived from the manifest; `${NODE_AUTH_TOKEN}` literal; `npm_*` of any case dropped; an empty token refused before any file is written | covered | `src/test/npmEnv.test.ts`, red first: *registryEnv is not a function*. Teeth: the token value written instead of the reference (3 red: *the user config holds the token value*); the empty-token refusal dropped (red: *an empty token must not be accepted*); the registry pin removed (red: *registry "https://registry.example.test/npm/" was accepted*); the scope check removed (red: *a scope of another owner was accepted*); each restored identical |
 | **release-please proposes with the App token, only from `main`**; pr-title.yml's docs-only step gets the title as data | covered | `src/test/releaseWorkflows.test.ts`. Teeth: `token: ${{ secrets.GITHUB_TOKEN }}` (red); a `pull_request:` trigger (2 red); `PR_TITLE` removed from the docs-only step (red) — each restored by SHA-256 |
 | **The first release is 0.1.0, tagged `v0.1.0`**: empty manifest + `initial-version` = package.json's version; a manifest naming a version comes with release-please's CHANGELOG.md section; one `node` package at `.`, no component, not a draft; visible changelog sections exactly the releasing types, and every title type has one | covered | `src/test/releaseConfig.test.ts`. Teeth: the sibling bootstrap `{".": "0.1.0"}` (*the manifest says 0.1.0 was released, but CHANGELOG.md has no section for it — release-please would cut the version after 0.1.0*); `initial-version` removed (*nothing is released yet, so release-please cuts initial-version — it must be package.json's 0.1.0*); `docs` made visible (*"docs" is visible in the changelog, but docs-only-title says it does not release*); the `test` section removed (*a title type with no changelog section*); `include-component-in-tag: true` (red) |
 | **The release guard** refuses every run that is not the release release-please cut for this package.json, listing every reason; `--facts` never writes `$GITHUB_OUTPUT` | covered | `src/test/releaseGuard.test.ts`. Teeth: the author check made always-true (*a release a person made by hand was not refused: release-guard: ok — @oleksandrdubyna88/vscode-webview-kit@0.1.0*); the main check made always-true (*a commit that is not on main was not refused*) |
-| **What npmjs serves is verified, not assumed**: the version; a SLSA v1 statement about exactly the served tarball (subject and sha512 = `dist.integrity`) from this repository's `release.yml` at `refs/tags/v<version>`; `npm audit signatures` with a verified signature AND attestation — over facts recorded from a real provenance-published package | covered | `src/test/verifyPublished.test.ts`. The gathering half was measured once against `@sigstore/core@3.0.0` (all three checks ok, 5.9 s) and against this unpublished package (each check fails after its retries: *npm view … answered nothing — that version is not served*; the published fixture fails at `pack` with E404). Teeth: the identity check removed (*verify-published: ok* where 1 was expected); the digest check made always-true (red); the attestation line no longer required (red) |
+| **What GitHub Packages serves is verified, not assumed**: the version; the served tarball's sha512 is `dist.integrity` and the attested file's (served = attested); `gh attestation verify` of the SERVED bytes, read back — ONE entry with this repository's `release.yml` at `refs/tags/v<version>`, a GitHub-hosted runner, SLSA v1, the served file's sha256 as a subject; the package is public — over facts built around a real attestation recorded from `cli/cli` | covered | `src/test/verifyPublished.test.ts`. Red first (19 tests; the old checks ran over the new shape): *verify-published: gh@2.97.0 FAILED — provenance: gh@2.97.0 carries no SLSA v1 provenance (dist.attestations)*, *--check is one of version, provenance, signatures or all, not "integrity"*, and for the empty token a kill after 5 s on the first *not served yet* line. Teeth, each observed red and restored identical: the `subjectAlternativeName` condition removed (*verify-published: ok — gh@2.97.0: attestation*); the `runnerEnvironment` condition (2 red); the `sourceRepositoryRef` condition (red); the subject sha256 condition (red); the `local.sha512 === served.sha512` comparison (red: *verify-published: ok — gh@2.97.0: integrity*); `.some(meetsAll)` replaced by per-condition "any entry" (red: the split-entries test); `registryEnv` after the registry question (red: *not served yet (attempt 1/12)*) |
 | **Documentation alone never opens a release** at a ROOT package: a releasing title or commit whose files, `.github` aside, are all Markdown or pictures is refused | covered | `src/test/docsOnlyTitle.test.ts` — red first against coai's script copied verbatim: 5 of 8 red, *"feat: a new page" would open a release for a README: No package would be released on documentation alone.* (`0 !== 1`) — coai's `pkg + '/'` prefix can never match the root `.`, so the copy was inert here. Green after the adaptation (`isUnder`, `exclude-paths` dropped first) |
 | **SHA-256** (`src/help/sha256.ts`, pure TypeScript) equals the standard: FIPS 180-2's five vectors (empty, `abc`, the 448- and 896-bit messages, one million `a`), and `node:crypto` at every length 0–200 bytes and over 300 seeded random strings (Cyrillic, emoji, NUL, lone surrogates) | covered | `src/test/sha256.test.ts` — red first against a stub answering 64 zeros: 7 of 8 red (`actual '0000…' expected 'e3b0c442…'`) |
 | **The digest's canonical form** (plan §2): the six fields by name in the fixed order, joined with U+0000, UTF-8, no other normalisation, first 8 hex — two vector literals computed independently by `node:crypto` (`fb76c375`, and `eafba843` for a Cyrillic body); CRLF ≠ LF, a trailing space or newline and a decomposed accent each change it; moving a character across a field boundary changes it; extra properties do not; a missing field is refused by name; `isDigest` accepts 8 lowercase hex only | covered | `src/test/digest.test.ts` — red first against a first cut that normalised CRLF, trimmed and joined with no separator: 7 of 12 red (`'TitleWhat it is…'` for the canonical form; CRLF and LF both `1e500044`; a missing field threw `Cannot read properties of undefined`). Teeth: emptying the separator turns the two vectors, the canonical form and the boundary test red |
@@ -267,13 +310,26 @@ harness) are where a real webview is exercised. In particular:
   panel sets the HTML first and attaches after, as coai did, and a test pins that order.
 - An 8-hex digest is 32 bits: two different English texts sharing one by chance is not tested and is
   accepted (one in about four billion per edit).
-- **The release itself is not run here, and nothing has been released.** What only a real release can show:
-  that the App's token mints and release-please opens its pull request on `main` (and that `contents: read`
-  on that job is enough, every write being the App's); that merging it tags `v0.1.0` and the published
-  release starts `release.yml`; that the environment `npm` hands `NPM_TOKEN` to the publish job and its tag
-  rule refuses other refs (a GitHub setting the suite cannot see); that npm accepts the token and signs the
-  provenance; that `verify-published.mjs`'s retry covers the registry's propagation; and that `--published`
-  downloads and consumes the real tarball. Those are DoD part B and POST_DEPLOY.md, run at the first release.
+- **The release itself is not run here, and nothing has been published** (0.1.0 never reached a registry;
+  0.1.1 is the first publish). What only a real release can show: that the App's token mints and
+  release-please opens its pull request on `main` (and that `contents: read` on that job is enough, every
+  write being the App's); that merging it tags the version and the published release starts `release.yml`;
+  that the environment `npm`'s tag rule refuses other refs (a GitHub setting the suite cannot see); **the
+  real publish** — that `npm publish <tarball>` with the job's `GITHUB_TOKEN` is accepted by GitHub Packages;
+  **the real attestation of this package** — that the attest step signs and stores it; **the GitHub Packages
+  packument shape** — that `npm view --json` carries `dist.integrity` there (the fixture's `view` is built in
+  the documented shape); **the packages REST answer** (`gh api /users/<owner>/packages/npm/<name>`, built in
+  the fixture) and **visibility inheritance** — whether a package a workflow creates with `GITHUB_TOKEN` is
+  public, as one documentation page says, or private, as another says; **whether `npm deprecate` works
+  against GitHub Packages**; **whether `packages: write` reads back** and `attestations: write` reads
+  attestations, as GitHub's cumulative levels say; that `verify-published.mjs`'s retry covers the registry's
+  propagation; and that `--published` downloads and consumes the real tarball. Those are DoD part B and
+  POST_DEPLOY.md, run at the first release.
+- The gathering halves of `verify-published.mjs` and `publish-once.mjs` (`npm view`, `npm pack
+  <name>@<version>`, `gh attestation verify`, `gh api`, `npm publish`) are not run by the suite: they need a
+  real GitHub Packages package and a token. `registryEnv` is held in a child process with a sentinel token,
+  and what npm does with the `${NODE_AUTH_TOKEN}` reference is npm's (measured once by hand: an unset
+  variable in that line does not break other npm commands).
 - The workflow tests read the files through a subset reader, not GitHub's parser; actionlint, run by hand,
   is the check that GitHub's schema accepts them, and the first real runs are the check that GitHub
   behaves as the files say.
@@ -288,5 +344,6 @@ On every pull request and push to `main`, in CI.
 CI's `build-test` job runs `npm test` on both platforms, and `ci.yml` also calls the reusable
 `pack-and-consume.yml`, which runs `npm run pack-and-consume` alone on both platforms — the job
 `release.yml` calls again, at the tag, before it publishes. `release.yml` runs the suite once more in its
-publish job (and `npm publish` runs it again through `prepublishOnly`), then the four POST_DEPLOY.md checks
-against what npmjs serves.
+publish job (`npm publish <tarball>` runs no lifecycle script, so `prepublishOnly` does not run again), then
+packs once, attests, publishes once, and runs POST_DEPLOY.md's checks 1, 2, 3 and 5 against what GitHub
+Packages serves (check 4, visibility, needs `read:packages` and is a person's).

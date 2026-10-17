@@ -1,0 +1,232 @@
+{
+  "$recorded": "Recorded 2026-10-16. REAL: attestation.entries — the verbatim output (gh 2.97.0, exit 0) of `gh attestation verify gh_2.97.0_linux_armv6.tar.gz --repo cli/cli --cert-identity https://github.com/cli/cli/.github/workflows/deployment.yml@refs/heads/trunk --source-ref refs/heads/trunk --deny-self-hosted-runners --format json` over the asset of `gh release download v2.97.0 -R cli/cli --pattern gh_2.97.0_linux_armv6.tar.gz` (only attestation.bundle and statement.predicate are trimmed; verificationResult.signature.certificate and the whole statement.subject list are kept); served.sha256, served.sha512 and local — hashed from that real file (the sha256 is the recorded subject digest). BUILT in the documented shape, because it cannot be recorded here: view (a GitHub Packages packument — no package exists yet; dist.integrity is the real file's sha512 so the shape is honest) and visibility (the REST answer of `gh api /users/<owner>/packages/npm/<name>` needs read:packages, which this machine's gh login lacks). Each test refusal is this record with one fact changed.",
+  "expected": {
+    "name": "gh",
+    "version": "2.97.0",
+    "owner": "cli",
+    "repo": "cli",
+    "registry": "https://npm.pkg.github.com",
+    "workflow": ".github/workflows/deployment.yml",
+    "ref": "refs/heads/trunk",
+    "identity": "https://github.com/cli/cli/.github/workflows/deployment.yml@refs/heads/trunk"
+  },
+  "view": {
+    "name": "gh",
+    "version": "2.97.0",
+    "dist": {
+      "integrity": "sha512-X8pR+8Tj8kTTgm00e6CCbvEZnFK6RcFZbq/ArpbjhvglBC4FgMHL9qsaYlM+iBJMULrArp3sxbkzUNZyLdoUEg=="
+    }
+  },
+  "served": {
+    "file": "gh_2.97.0_linux_armv6.tar.gz",
+    "sha512": "sha512-X8pR+8Tj8kTTgm00e6CCbvEZnFK6RcFZbq/ArpbjhvglBC4FgMHL9qsaYlM+iBJMULrArp3sxbkzUNZyLdoUEg==",
+    "sha256": "83698de1d91d201cc3b9d9b0beb346c221cadb53a68fb82f741ef0a0efc4502c"
+  },
+  "local": {
+    "file": "gh_2.97.0_linux_armv6.tar.gz",
+    "sha512": "sha512-X8pR+8Tj8kTTgm00e6CCbvEZnFK6RcFZbq/ArpbjhvglBC4FgMHL9qsaYlM+iBJMULrArp3sxbkzUNZyLdoUEg==",
+    "sha256": "83698de1d91d201cc3b9d9b0beb346c221cadb53a68fb82f741ef0a0efc4502c"
+  },
+  "attestation": {
+    "status": 0,
+    "stderr": "",
+    "entries": [
+      {
+        "attestation": {
+          "bundle": {
+            "note": "trimmed by the recorder — the verbatim bundle is ~tens of KB and the decision does not read it"
+          },
+          "bundle_url": "",
+          "initiator": ""
+        },
+        "verificationResult": {
+          "mediaType": "application/vnd.dev.sigstore.verificationresult+json;version=0.1",
+          "signature": {
+            "certificate": {
+              "certificateIssuer": "CN=sigstore-intermediate,O=sigstore.dev",
+              "subjectAlternativeName": "https://github.com/cli/cli/.github/workflows/deployment.yml@refs/heads/trunk",
+              "issuer": "https://token.actions.githubusercontent.com",
+              "githubWorkflowTrigger": "workflow_dispatch",
+              "githubWorkflowSHA": "55dbb4dc6b7edb10b48e3d7fc5bccd32318d1b55",
+              "githubWorkflowName": "Deployment",
+              "githubWorkflowRepository": "cli/cli",
+              "githubWorkflowRef": "refs/heads/trunk",
+              "buildSignerURI": "https://github.com/cli/cli/.github/workflows/deployment.yml@refs/heads/trunk",
+              "buildSignerDigest": "55dbb4dc6b7edb10b48e3d7fc5bccd32318d1b55",
+              "runnerEnvironment": "github-hosted",
+              "sourceRepositoryURI": "https://github.com/cli/cli",
+              "sourceRepositoryDigest": "55dbb4dc6b7edb10b48e3d7fc5bccd32318d1b55",
+              "sourceRepositoryRef": "refs/heads/trunk",
+              "sourceRepositoryIdentifier": "212613049",
+              "sourceRepositoryOwnerURI": "https://github.com/cli",
+              "sourceRepositoryOwnerIdentifier": "59704711",
+              "buildConfigURI": "https://github.com/cli/cli/.github/workflows/deployment.yml@refs/heads/trunk",
+              "buildConfigDigest": "55dbb4dc6b7edb10b48e3d7fc5bccd32318d1b55",
+              "buildTrigger": "workflow_dispatch",
+              "runInvocationURI": "https://github.com/cli/cli/actions/runs/30597407850/attempts/1",
+              "sourceRepositoryVisibilityAtSigning": "public"
+            }
+          },
+          "verifiedTimestamps": [
+            {
+              "type": "Tlog",
+              "uri": "https://rekor.sigstore.dev",
+              "timestamp": "2026-07-31T04:02:13+02:00"
+            }
+          ],
+          "verifiedIdentity": {
+            "subjectAlternativeName": {
+              "subjectAlternativeName": "https://github.com/cli/cli/.github/workflows/deployment.yml@refs/heads/trunk"
+            },
+            "issuer": {
+              "issuer": "",
+              "regexp": ".*"
+            },
+            "runnerEnvironment": "github-hosted"
+          },
+          "statement": {
+            "_type": "https://in-toto.io/Statement/v1",
+            "subject": [
+              {
+                "name": "gh_2.97.0_linux_386.deb",
+                "digest": {
+                  "sha256": "6c11ad74a82e210b14f01a2fb5a1e7e13f28e01053dc2527fc683754914282ee"
+                }
+              },
+              {
+                "name": "gh_2.97.0_linux_386.rpm",
+                "digest": {
+                  "sha256": "0a770fd000d21147856f373a79b845f4fef3121526c0541bbde209dffa2e6b61"
+                }
+              },
+              {
+                "name": "gh_2.97.0_linux_386.tar.gz",
+                "digest": {
+                  "sha256": "ba556b1061cfc89fee62d1e59dfacd2ea646d8c3bb41cbef909ec6ed27071512"
+                }
+              },
+              {
+                "name": "gh_2.97.0_linux_amd64.deb",
+                "digest": {
+                  "sha256": "7c7fa3bb890db0934baf65910d97b8c0fa437b2e590f7f7daf6bdf82c5c486d7"
+                }
+              },
+              {
+                "name": "gh_2.97.0_linux_amd64.rpm",
+                "digest": {
+                  "sha256": "d5e8706ba3f2caa752c766651c6c1f0a332042a4db5ce8809bcc1391adc94d07"
+                }
+              },
+              {
+                "name": "gh_2.97.0_linux_amd64.tar.gz",
+                "digest": {
+                  "sha256": "a2c9b8497e1f85b1ad0dfcb78b5a622e098801b8e461e459e88e1ee12f018112"
+                }
+              },
+              {
+                "name": "gh_2.97.0_linux_arm64.deb",
+                "digest": {
+                  "sha256": "0ba7a76739c865d82ebde24667d875d9b8caa55db47c7597c24accdd4defd2bb"
+                }
+              },
+              {
+                "name": "gh_2.97.0_linux_arm64.rpm",
+                "digest": {
+                  "sha256": "7152dce33173bc34665bf22afbce4afed5c6ffcb2cef7001fb994044ed919f50"
+                }
+              },
+              {
+                "name": "gh_2.97.0_linux_arm64.tar.gz",
+                "digest": {
+                  "sha256": "73ea440ecad9c9e284429997ee6f93577bc6f7bc6fba357ef62c53ad8fb641a5"
+                }
+              },
+              {
+                "name": "gh_2.97.0_linux_armv6.deb",
+                "digest": {
+                  "sha256": "90abc205f422631492784455a40c52fd62a2744e3441cb7507406a9307445cb7"
+                }
+              },
+              {
+                "name": "gh_2.97.0_linux_armv6.rpm",
+                "digest": {
+                  "sha256": "8a2c4b833efe6d5f9580748651291bd2ce9f4f6b48a746baf5060af3537222a9"
+                }
+              },
+              {
+                "name": "gh_2.97.0_linux_armv6.tar.gz",
+                "digest": {
+                  "sha256": "83698de1d91d201cc3b9d9b0beb346c221cadb53a68fb82f741ef0a0efc4502c"
+                }
+              },
+              {
+                "name": "gh_2.97.0_macOS_amd64.zip",
+                "digest": {
+                  "sha256": "63298c998cc2a924c9e254c6af6a1caad6ece281122687a91f079bc0a462700e"
+                }
+              },
+              {
+                "name": "gh_2.97.0_macOS_arm64.zip",
+                "digest": {
+                  "sha256": "a58b8fd77b417a38f47a0b54d1370c59b0fcdb324ccc9ca002b0998f7c4c999e"
+                }
+              },
+              {
+                "name": "gh_2.97.0_macOS_universal.pkg",
+                "digest": {
+                  "sha256": "78eaaf7f72cb130f225bcf3f17e686e0e21ce2c9f84b393d83eb0439e484d15f"
+                }
+              },
+              {
+                "name": "gh_2.97.0_windows_386.msi",
+                "digest": {
+                  "sha256": "88edfc9e93786dde4cb26ca469645aec6a037691ef33e58e0c9dd186fb79a26b"
+                }
+              },
+              {
+                "name": "gh_2.97.0_windows_386.zip",
+                "digest": {
+                  "sha256": "de683ab803043eb614b57cadc202c722b19bcb1bc3de78cc424350278d6b04e0"
+                }
+              },
+              {
+                "name": "gh_2.97.0_windows_amd64.msi",
+                "digest": {
+                  "sha256": "942865de5f19c42fdae32b77988f8d68e72ff78deef26b93d970b494bc2c7e87"
+                }
+              },
+              {
+                "name": "gh_2.97.0_windows_amd64.zip",
+                "digest": {
+                  "sha256": "35d7fe05c4dd1411ffda1e73dfc7c6f44b75c936ca51fa6595c657fdc0350cec"
+                }
+              },
+              {
+                "name": "gh_2.97.0_windows_arm64.msi",
+                "digest": {
+                  "sha256": "5389e1baf84383470f3b1a5e61377fbb2e529483a38261ce0e4d83fe70c36ca0"
+                }
+              },
+              {
+                "name": "gh_2.97.0_windows_arm64.zip",
+                "digest": {
+                  "sha256": "3e2d4a166da4ee5020c592737b65eec0e724946d5d5b962f5fe59d99116dc4bf"
+                }
+              }
+            ],
+            "predicateType": "https://slsa.dev/provenance/v1",
+            "predicate": {
+              "note": "trimmed by the recorder — the decision reads predicateType only"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "visibility": {
+    "status": 0,
+    "answer": {
+      "visibility": "public"
+    }
+  }
+}

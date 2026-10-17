@@ -22,7 +22,7 @@ const ROOT = path.resolve(__dirname, '..', '..');
 const SCRIPT = path.join(ROOT, 'scripts', 'publish-once.mjs');
 const SENTINEL = 'sentinel-never-printed';
 const NAME = '@oleksandrdubyna88/vscode-webview-kit';
-const MANIFEST = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')) as { version: string };
+const MANIFEST: { readonly version: string } = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 
 interface Ran {
   readonly code: number | null;

@@ -1,6 +1,8 @@
 # PLAN — publish the kit to GitHub Packages, with a GitHub artifact attestation, instead of npmjs
 
-> Status: **plan only, nothing implemented yet, 2026-10-16.** Scope: `package.json`, `.github/workflows/release.yml`,
+> Status: **in progress, 2026-10-16** — stories S1–S4 are built on the branch `chore/gh-packages-publish`; open:
+> the first release (0.1.1), which is the only run that can observe the real publish, the attestation and the
+> package's visibility (§7, last paragraph). Scope: `package.json`, `.github/workflows/release.yml`,
 > `scripts/verify-published.mjs`, `scripts/pack-and-consume.mjs`, `scripts/lib/npm.mjs`, the release tests,
 > README, POST_DEPLOY.md, the research docs, and the release section of [PLAN_extract_the_kit.md](PLAN_extract_the_kit.md).
 >
@@ -193,6 +195,18 @@ served = integrity = local, sha256 binds served = attested subject), `--source-r
 inheritance is unobserved (already checked after the release). Verified against `wsl_care ·
 .github/workflows/release-extension.yml:176-300`. The job split is NOT taken: the owner's brief puts the attestation
 in the publish job; it is named in the report as a possible hardening.
+
+**Code round (same session, 2026-10-16):** verdict `proceed`, gating 12 of threshold 5; **12 of 16 reviewers
+answered** (all four kimi roles failed: timeout, cancelled, two never started). Accepted and fixed: `registryEnv`
+refuses any registry but `https://npm.pkg.github.com` (the job's package-write token can go nowhere else) and any
+scope that is not `@` + the repository owner; one `repositoryOwnerAndName` parser that tolerates a trailing slash;
+a progress line before publish-once's retry; two test `as` casts replaced by annotations. Rejected with reasons:
+the shared `ctx` of pack-and-consume (every step writes it by design), moving `npm publish` back into the workflow
+(the skip and the publish would split), the credential-key path, a squatted name (the scope equals the owner on
+GitHub Packages, and verify refuses foreign bytes), a `JSON.parse` crash (`main` catches it, exit 2), a longer
+retry before the publish (a red before the publish is the safe state), redacting a temp path, streaming hashes of
+a ~100 KB tarball, and skipping the served download (the served bytes ARE the evidence). The retry line has no
+test: it needs a registry answer that is neither a version nor an E404.
 
 ## 11. Definition of Done
 
@@ -516,7 +530,8 @@ URL check on `dist.attestations` — deleted).**
   'github-hosted'`, `WORKFLOW`, timeouts as today plus `GH_TIMEOUT_MS = 120_000`.
 - `expectedFor(manifest, version)` → `{ name, version, owner, repo, registry: manifest.publishConfig.registry,
   workflow: WORKFLOW, ref: 'refs/tags/v<version>', identity: 'https://github.com/<owner>/<repo>/<WORKFLOW>@refs/tags/v<version>' }`,
-  `owner`/`repo` parsed from `repositoryUrl(manifest.repository)` (kept) — never retyped. `packageName(name)` = the
+  `owner`/`repo` parsed from `repository` — never retyped. *As built (code round, finding 10):* one parser,
+  `repositoryOwnerAndName` in `scripts/lib/npm.mjs`, shared with `registryEnv`; `repositoryUrl` was removed. `packageName(name)` = the
   npm name without its scope (`vscode-webview-kit`), what GitHub's REST calls the package.
 - `readArguments(argv, env)`: `parseArgs({ allowPositionals: true, options: { check: { type: 'string', multiple: true,
   default: [] }, facts: { type: 'string' }, tarball: { type: 'string' } } })`; each `--check` must be in `CHECKS`

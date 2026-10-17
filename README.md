@@ -325,6 +325,11 @@ setup at the end of this section.
    node .agents/conventions/tools/post-deploy-check.mjs --target 0.1.1 --timeout 300000
    ```
 
+The scripts' npm (`scripts/lib/npm.mjs`, `registryEnv`) is pinned: it refuses any registry but
+`https://npm.pkg.github.com` (one trailing slash tolerated) and any package scope that is not the owner of
+`package.json`'s repository, so a typo or a changed manifest can never send the job's package-write token to
+another host or publish under another owner.
+
 Consumers pin the EXACT version and switch in their own pull requests, only after a version is published
 and verified.
 

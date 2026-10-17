@@ -36,43 +36,66 @@ export function childEnv() {
 
 const EMPTY_TOKEN = 'NODE_AUTH_TOKEN is empty — in CI give the job a GITHUB_TOKEN with packages: read (NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}); locally set it to a personal access token (classic) with read:packages';
 
-/** The package's scope (`@owner`), which is what npm maps to a registry; throws for an unscoped name. */
+/** The only registry the job's package-write token may be sent to; `publishConfig.registry` must be exactly this. */
+export const GITHUB_PACKAGES = 'https://npm.pkg.github.com';
+/** npm's key for that registry's credentials: `//<host>/`, no scheme, one trailing slash. */
+const CREDENTIAL_KEY = `//${new URL(GITHUB_PACKAGES).host}/`;
+
+/**
+ * `{ owner, repo, url }` of a package.json `repository` (a string or `{ url }`): `https://github.com/<owner>/<repo>`
+ * in any of its spellings — a `git+` prefix, `github:<owner>/<repo>`, a `.git` suffix, trailing slashes. The ONE
+ * parser of it here: `verify-published.mjs` derives its owner and repository from it too. Throws for any other shape.
+ */
+export function repositoryOwnerAndName(repository) {
+  const raw = typeof repository === 'string' ? repository : repository?.url ?? '';
+  const url = `${raw}`.replace(/^git\+/, '').replace(/^github:/, 'https://github.com/').replace(/\/+$/, '').replace(/\.git$/, '').replace(/\/+$/, '');
+  const match = /^https:\/\/github\.com\/([^/]+)\/([^/]+)$/.exec(url);
+  if (match === null) {
+    throw new Error(`repository.url is not https://github.com/<owner>/<repo>: ${url}`);
+  }
+
+  return { owner: match[1], repo: match[2], url };
+}
+
+/** The package's scope (`@owner`), which is what npm maps to a registry: it must be `@` + the repository's owner. */
 function scopeOf(manifest) {
   const scope = `${manifest.name}`.split('/')[0];
   if (!scope.startsWith('@') || !`${manifest.name}`.includes('/')) {
     throw new Error(`package name "${manifest.name}" has no @scope, so no registry can be mapped to it`);
   }
+  const { owner } = repositoryOwnerAndName(manifest.repository);
+  if (scope !== `@${owner}`) {
+    throw new Error(`package scope ${scope} is not @${owner}, the owner of the repository in package.json — GitHub Packages takes no other scope`);
+  }
 
   return scope;
 }
 
-/** The registry URL package.json's `publishConfig` names, which must be https; throws otherwise. */
+/** `GITHUB_PACKAGES`, when `publishConfig.registry` is exactly that (one trailing slash tolerated); throws otherwise. */
 function registryOf(manifest) {
-  const registry = manifest.publishConfig?.registry;
-  if (typeof registry !== 'string' || !URL.canParse(registry) || new URL(registry).protocol !== 'https:') {
-    throw new Error(`publishConfig.registry is not an https URL: ${JSON.stringify(registry)}`);
+  const seen = manifest.publishConfig?.registry;
+  if (typeof seen !== 'string' || seen.replace(/\/$/, '') !== GITHUB_PACKAGES) {
+    throw new Error(`publishConfig.registry is ${JSON.stringify(seen)}, not ${JSON.stringify(GITHUB_PACKAGES)} — the only registry the job's token may be sent to`);
   }
 
-  return registry;
-}
-
-/** npm's key for a registry's credentials: `//<host><path>/`, with no scheme and exactly one trailing slash. */
-function credentialKey(registry) {
-  const { host, pathname } = new URL(registry);
-
-  return `//${host}${pathname.replace(/\/+$/, '')}/`;
+  return GITHUB_PACKAGES;
 }
 
 /**
  * An environment in which npm talks to GitHub Packages as the package's own scope maps it: no `npm_*`
  * variables from the parent, and a user config — a file in `dir`, so a developer's own `~/.npmrc` (a login, a
  * mirror) cannot change what is asked — holding two lines derived from `manifest` (package.json), never
- * retyped: `<scope>:registry=<publishConfig.registry>` and the registry's `_authToken` as the LITERAL text
+ * retyped: `<scope>:registry=<registry>` and the registry's `_authToken` as the LITERAL text
  * `${NODE_AUTH_TOKEN}`. npm expands that from its own environment, so the token is never written to disk;
  * it stays in the returned environment, where npm reads it.
  *
- * Throws, before anything is written, when `NODE_AUTH_TOKEN` is unset or empty: GitHub Packages serves nothing
- * without a token, and a run that cannot have one should stop and say what to set.
+ * The registry is PINNED: `publishConfig.registry` must be exactly `GITHUB_PACKAGES` (one trailing slash
+ * tolerated), and the scope must be `@` + the owner of `manifest.repository` — so a typo or a changed manifest
+ * can never send the job's package-write token to another host or publish under another owner.
+ *
+ * Throws, before anything is written, when `NODE_AUTH_TOKEN` is unset or empty (checked FIRST: GitHub Packages
+ * serves nothing without a token, and a run that cannot have one should stop and say what to set), or when the
+ * registry or the scope is not the pinned one.
  */
 export function registryEnv(dir, manifest) {
   if ((process.env.NODE_AUTH_TOKEN ?? '') === '') {
@@ -80,7 +103,8 @@ export function registryEnv(dir, manifest) {
   }
   const registry = registryOf(manifest);
   const userconfig = join(dir, 'registry.npmrc');
-  writeFileSync(userconfig, `${scopeOf(manifest)}:registry=${registry}\n${credentialKey(registry)}:_authToken=\${NODE_AUTH_TOKEN}\n`);
+  const scope = scopeOf(manifest);
+  writeFileSync(userconfig, `${scope}:registry=${registry}\n${CREDENTIAL_KEY}:_authToken=\${NODE_AUTH_TOKEN}\n`);
 
   return { ...childEnv(), npm_config_userconfig: userconfig };
 }

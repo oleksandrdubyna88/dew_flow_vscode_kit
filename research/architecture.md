@@ -402,7 +402,11 @@ directory holding `<scope>:registry=<publishConfig.registry>` and `//<host>/:_au
 both derived from `package.json`, and the second the LITERAL reference, so npm expands the token from its own
 environment and it is never written to disk. It throws, before writing anything, when `NODE_AUTH_TOKEN` is
 empty, naming what to set (the job's `GITHUB_TOKEN` with `packages: read` in CI; a classic personal access
-token with `read:packages` locally). In `release.yml`, setup-node's `.npmrc` serves the job's own `npm ci` and
+token with `read:packages` locally). It is also PINNED: `publishConfig.registry` must be exactly
+`GITHUB_PACKAGES` (`https://npm.pkg.github.com`, one trailing slash tolerated) and the scope must be `@` + the
+owner of `manifest.repository`, or it throws before writing — a typo or a changed manifest cannot send the
+job's package-write token to another host. `repositoryOwnerAndName` is the one parser of `repository`, shared
+with `verify-published.mjs`. In `release.yml`, setup-node's `.npmrc` serves the job's own `npm ci` and
 `npm pack` steps; the scripts' npm children (including the one `publish-once.mjs` runs for `npm publish`)
 read only `registryEnv`'s file, because `childEnv` drops `NPM_CONFIG_USERCONFIG` with every other `npm_*` key.
 

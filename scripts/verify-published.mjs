@@ -38,7 +38,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
-import { childEnv, npmCli, registryEnv } from './lib/npm.mjs';
+import { childEnv, npmCli, registryEnv, repositoryOwnerAndName } from './lib/npm.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const WORKFLOW = '.github/workflows/release.yml';
@@ -51,23 +51,6 @@ const GH_TIMEOUT_MS = 120_000;
 const VIEW_ATTEMPTS = 12;
 const VIEW_PAUSE_MS = 10_000;
 
-/** `git+https://github.com/o/r.git` (or `github:o/r`) as `https://github.com/o/r`. */
-export function repositoryUrl(repository) {
-  const url = typeof repository === 'string' ? repository : repository?.url ?? '';
-
-  return url.replace(/^git\+/, '').replace(/^github:/, 'https://github.com/').replace(/\.git$/, '');
-}
-
-/** `{ owner, repo }` of `https://github.com/<owner>/<repo>`; throws for anything else. */
-function ownerAndRepo(url) {
-  const match = /^https:\/\/github\.com\/([^/]+)\/([^/]+)$/.exec(url);
-  if (match === null) {
-    throw new Error(`repository.url is not https://github.com/<owner>/<repo>: ${url}`);
-  }
-
-  return { owner: match[1], repo: match[2] };
-}
-
 /** The npm name without its scope — what GitHub's REST calls the package. */
 export function packageName(name) {
   return name.replace(/^@[^/]+\//, '');
@@ -75,7 +58,7 @@ export function packageName(name) {
 
 /** What every check compares against: this package, at this version, from this repository's release workflow. */
 export function expectedFor(manifest, version) {
-  const { owner, repo } = ownerAndRepo(repositoryUrl(manifest.repository));
+  const { owner, repo } = repositoryOwnerAndName(manifest.repository);
   const ref = `refs/tags/v${version}`;
 
   return {

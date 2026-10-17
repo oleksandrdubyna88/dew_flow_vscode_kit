@@ -124,6 +124,7 @@ async function view(expected, env) {
   const args = ['view', `${expected.name}@${expected.version}`, '--json'];
   let result = npm(args, env, VIEW_TIMEOUT_MS);
   if (understood(result) === undefined) {
+    console.log(`publish-once: the registry's answer was not understood (exit ${result.status ?? result.signal}); asking once more in ${RETRY_PAUSE_MS / 1000} s`);
     await pause(RETRY_PAUSE_MS);
     result = npm(args, env, VIEW_TIMEOUT_MS);
   }

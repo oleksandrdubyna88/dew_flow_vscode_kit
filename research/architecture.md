@@ -334,10 +334,10 @@ flowchart TB
   port --> card
   table --> order
   tabs --> status
-  table -- "onReveal(index) — an index, nothing else" --> page
+  table -- "onReveal(index, request) — an index and an opaque request id, nothing of the row" --> page
   page -- "postMessage reveal index" --> host
   host -- "the revealed text" --> page
-  page -- "table.reveal(index, text)" --> table
+  page -- "table.reveal(index, text, request)" --> table
   css -. "linked under the page nonce" .- page
 ```
 

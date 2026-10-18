@@ -31,7 +31,7 @@ const ROWS: readonly Proc[] = [
 
 const mib = (bytes: number): string => `${(bytes / 1_048_576).toFixed(1)} MiB`;
 
-function options(overrides: Partial<DataTableOptions<Proc>> = {}, revealed: number[][] = []): DataTableOptions<Proc> {
+function options(overrides: Partial<DataTableOptions<Proc>> = {}, revealed: unknown[][] = []): DataTableOptions<Proc> {
   return {
     label: 'Processes',
     columns: [
@@ -45,7 +45,7 @@ function options(overrides: Partial<DataTableOptions<Proc>> = {}, revealed: numb
     reveal: {
       header: 'Command line',
       button: (row) => `Show the command line of ${row.program}`,
-      onReveal: (...args: number[]) => { revealed.push(args); },
+      onReveal: (...args: unknown[]) => { revealed.push(args); },
     },
     ...overrides,
   };
@@ -154,26 +154,34 @@ onEveryDocument(<E extends KitElement<E>>(make: () => Driver<E>, name: string) =
       assert.deepEqual(buttons.map((button) => button.text), ['Show', 'Show', 'Show', 'Show']);
     });
 
-    test('a reveal click tells onReveal ONE argument — the row\'s index in the given rows, even after a sort and a search moved it', () => {
+    test('a reveal click tells onReveal the row\'s index in the given rows - even after a sort and a search moved it - and an opaque request id, and NOTHING of the row', () => {
       const driver = make();
-      const revealed: number[][] = [];
-      const view = createDataTable(driver.doc, options({}, revealed));
+      const log: unknown[][] = [];
+      const view = createDataTable(driver.doc, options({}, log));
       const root = driver.attach(view.root);
       view.sortBy('pid', 'descending');
       driver.type(root.one('input[type="search"]'), 'o');
       assert.deepEqual(programs(root), ['dotnet', 'node']);
       const first = root.all('tr.kit-table__row').filter((row) => !row.hidden)[0];
       driver.click(first?.one('button[data-kit-reveal]') ?? assert.fail('no reveal button'));
-      assert.deepEqual(revealed, [[2]], 'not the display position 0: dotnet is row 2 of the given rows');
+      assert.equal(log.length, 1);
+      assert.equal(log[0]?.length, 2, 'onReveal must get exactly the index and the request');
+      assert.equal(log[0]?.[0], 2, 'not the display position 0: dotnet is row 2 of the given rows');
+      const request = log[0]?.[1];
+      assert.equal(typeof request, 'string');
+      for (const value of [...Object.values(ROWS[2] ?? {}), 'dotnet', 'SECRET']) {
+        assert.ok(!String(request).includes(String(value)), `the request "${String(request)}" carries row data "${String(value)}"`);
+      }
     });
 
-    test('reveal(index, text) fills that row\'s cell only; setRows drops every revealed value', () => {
+    test('reveal(index, text, request) fills that row\'s cell only; setRows drops every revealed value', () => {
       const driver = make();
-      const view = createDataTable(driver.doc, options());
+      const log: unknown[][] = [];
+      const view = createDataTable(driver.doc, options({}, log));
       const root = driver.attach(view.root);
       view.sortBy('program', 'descending');
-      driver.click(root.one('tr[data-kit-row="2"]').one('button[data-kit-reveal]'));
-      assert.equal(view.reveal(2, ROWS[2]?.secret ?? ''), true);
+      const request = ask(driver, root, 2, log);
+      assert.equal(view.reveal(2, ROWS[2]?.secret ?? '', request), true);
       const holding = root.all('tr.kit-table__row').filter((row) => row.text.includes('SECRET'));
       assert.equal(holding.length, 1);
       assert.equal(holding[0]?.attribute('data-kit-row'), '2');
@@ -186,45 +194,107 @@ onEveryDocument(<E extends KitElement<E>>(make: () => Driver<E>, name: string) =
       assert.deepEqual(programs(root), ['node2', 'dotnet2', 'claude2', 'Bash2']);
     });
 
-
-    /** A person asks to reveal row `index` of the rows the consumer gave. */
-    function ask(driver: Driver<E>, root: DomNode, index: number): void {
+    /** A person asks to reveal row `index` of the rows the consumer gave; answers the request id the consumer was told. */
+    function ask(driver: Driver<E>, root: DomNode, index: number, log: unknown[][]): string {
+      const before = log.length;
       driver.click(root.one(`tr[data-kit-row="${index}"]`).one('button[data-kit-reveal]'));
+      assert.equal(log.length, before + 1, 'the click did not reach onReveal');
+      const request = log[log.length - 1]?.[1];
+      assert.equal(typeof request, 'string', 'onReveal got no request id');
+
+      return String(request);
     }
 
-    test('reveal(index, text) applies only to a row a person ASKED for in the current rows: no click, or a click before setRows, answers false and changes nothing', () => {
+    test('reveal answers true only for the CURRENT request of a row a person asked about: no request, an unknown one, an old one, one answered already - all false, nothing changes', () => {
       const driver = make();
-      const view = createDataTable(driver.doc, options());
+      const log: unknown[][] = [];
+      const view = createDataTable(driver.doc, options({}, log));
       const root = driver.attach(view.root);
-      assert.equal(view.reveal(1, 'SECRET-unasked'), false, 'a reveal nobody asked for was applied');
+      assert.equal(view.reveal(1, 'SECRET-unasked', 'x:1'), false, 'a reveal nobody asked for was applied');
+      assert.equal(view.reveal(1, 'SECRET-unasked', undefined as never), false, 'a missing request was applied');
       assert.ok(!root.text.includes('SECRET'), 'an unasked reveal reached the DOM');
-      ask(driver, root, 3);
-      view.setRows(ROWS.map((row) => ({ ...row, program: `${row.program}2` })));
-      assert.equal(view.reveal(3, 'SECRET-late-reply'), false, 'a late reply landed on a NEW row 3');
-      assert.ok(!root.text.includes('SECRET'), 'the old row 3\'s secret is on the new row 3');
-      assert.equal(root.all('button[data-kit-reveal]').length, 4, 'a refused reveal replaced a button');
-      ask(driver, root, 3);
-      assert.equal(view.reveal(3, 'SECRET-answered'), true);
+      const request = ask(driver, root, 3, log);
+      assert.equal(view.reveal(3, 'SECRET-no-request', undefined as never), false, 'a reply with no request was applied');
+      assert.equal(view.reveal(3, 'SECRET-other-request', `${request}-other`), false, 'a reply with another request was applied');
+      assert.equal(view.reveal(1, 'SECRET-wrong-row', request), false, 'a request answered for another row was applied');
+      assert.ok(!root.text.includes('SECRET'), 'a refused reply reached the DOM');
+      assert.equal(view.reveal(3, 'SECRET-answered', request), true);
       assert.equal(root.all('tr.kit-table__row').filter((row) => row.text.includes('SECRET-answered')).length, 1);
-      assert.equal(view.reveal(3, 'SECRET-twice'), false, 'one click answered twice');
+      assert.equal(view.reveal(3, 'SECRET-twice', request), false, 'one request answered twice');
       assert.ok(!root.text.includes('SECRET-twice'));
+    });
+
+    test('a late reply for a click made BEFORE setRows never lands - not even when the same row is clicked again after it: only the second request is accepted', () => {
+      const driver = make();
+      const log: unknown[][] = [];
+      const view = createDataTable(driver.doc, options({}, log));
+      const root = driver.attach(view.root);
+      const firstRequest = ask(driver, root, 2, log);
+      view.setRows(ROWS.map((row) => ({ ...row, program: `${row.program}2` })));
+      assert.equal(view.reveal(2, 'SECRET-old', firstRequest), false, 'a reply from before setRows was applied');
+      assert.ok(!root.text.includes('SECRET-old'));
+      assert.equal(root.all('button[data-kit-reveal]').length, 4, 'a refused reveal replaced a button');
+      const secondRequest = ask(driver, root, 2, log);
+      assert.notEqual(secondRequest, firstRequest, 'two clicks shared a request id');
+      assert.equal(view.reveal(2, 'SECRET-old', firstRequest), false, 'the FIRST reply was accepted for the second click of the same row');
+      assert.ok(!root.text.includes('SECRET-old'), 'the old reply is in a cell');
+      assert.equal(view.reveal(2, 'SECRET-new', secondRequest), true);
+      assert.equal(root.all('tr.kit-table__row').filter((row) => row.text.includes('SECRET-new')).length, 1);
+      assert.ok(!root.text.includes('SECRET-old'));
+    });
+
+    test('a click on a button that is waiting does nothing - onReveal is told once - the button says Waiting... with a pending class, the revealed text replaces it, and setRows resets it', () => {
+      const driver = make();
+      const log: unknown[][] = [];
+      const view = createDataTable(driver.doc, options({}, log));
+      const root = driver.attach(view.root);
+      const button = (): DomNode => root.one('tr[data-kit-row="1"]').one('button[data-kit-reveal]');
+      assert.equal(button().text, 'Show');
+      assert.ok(!button().classes.includes('kit-table__reveal--pending'));
+      const request = ask(driver, root, 1, log);
+      assert.equal(button().text, 'Waiting…');
+      assert.ok(button().classes.includes('kit-table__reveal--pending'), 'no pending class on the waiting button');
+      driver.click(button());
+      driver.click(button());
+      assert.equal(log.length, 1, 'a click while waiting told the consumer again');
+      assert.equal(view.reveal(1, 'SECRET-claude', request), true);
+      assert.equal(root.all('tr.kit-table__row').filter((row) => row.text.includes('Waiting')).length, 0);
+      assert.equal(root.one('tr[data-kit-row="1"]').one('td.kit-table__reveal').text, 'SECRET-claude');
+      ask(driver, root, 2, log);
+      assert.equal(root.one('tr[data-kit-row="2"]').one('button[data-kit-reveal]').text, 'Waiting…');
+      view.setRows(ROWS);
+      assert.equal(root.all('button[data-kit-reveal]').filter((candidate) => candidate.text !== 'Show').length, 0, 'setRows left a button waiting');
+      assert.ok(root.all('button[data-kit-reveal]').every((candidate) => !candidate.classes.includes('kit-table__reveal--pending')));
+      ask(driver, root, 2, log);
+      assert.equal(log.length, 3, 'a row waiting before setRows blocked the same row afterwards');
+    });
+
+    test('the consumer can say what a waiting button says (waitingText), and the English default is "Waiting…"', () => {
+      const driver = make();
+      const log: unknown[][] = [];
+      const reveal = { ...(options().reveal ?? assert.fail('no reveal')), waitingText: 'Wait a moment', onReveal: (...args: unknown[]) => { log.push(args); } };
+      const view = createDataTable(driver.doc, options({ reveal }, log));
+      const root = driver.attach(view.root);
+      ask(driver, root, 0, log);
+      assert.equal(root.one('tr[data-kit-row="0"]').one('button[data-kit-reveal]').text, 'Wait a moment');
     });
 
     test('a revealed value is searchable, and setRows drops it from the search with the rest of it', () => {
       const driver = make();
-      const view = createDataTable(driver.doc, options());
+      const log: unknown[][] = [];
+      const view = createDataTable(driver.doc, options({}, log));
       const root = driver.attach(view.root);
-      ask(driver, root, 2);
+      const request = ask(driver, root, 2, log);
       view.filter('ccc');
       assert.deepEqual(view.order(), [], 'the hidden value was searchable before it was revealed');
-      view.reveal(2, ROWS[2]?.secret ?? '');
+      view.reveal(2, ROWS[2]?.secret ?? '', request);
       assert.deepEqual(view.order(), [2], 'the revealed value is not searched');
       assert.deepEqual(programs(root), ['dotnet']);
       view.setRows(ROWS);
       assert.deepEqual(view.order(), [], 'setRows kept the revealed text in the search');
     });
 
-    test('the gallery\'s "revealed" case really shows its revealed text - a press, then the consumer\'s reply - on this document too', () => {
+    test('the gallery\'s "revealed" case really shows its revealed text AND a waiting button - a press, then the consumer\'s reply for one row only - on this document too', () => {
       const driver = make();
       const entry = GALLERY.find((component) => component.id === 'dataTable')?.cases.find((candidate) => candidate.id === 'revealed') ?? assert.fail('no gallery case dataTable/revealed');
       assert.equal(entry.kind, 'dom');
@@ -232,7 +302,9 @@ onEveryDocument(<E extends KitElement<E>>(make: () => Driver<E>, name: string) =
       assert.equal(root.all('td.kit-table__reveal--shown').length, 1, 'no revealed cell: the case\'s press did not reach the table');
       assert.ok(root.text.includes('charlie --detail=shown-only-on-request'));
       assert.equal(root.all('button[data-kit-reveal]').length, 3, 'the other three rows keep their buttons');
+      assert.equal(root.all('button.kit-table__reveal--pending').length, 1, 'no waiting button in the case');
     });
+
     test('filter(query) refuses a non-string naming the type; the search box still passes its string', () => {
       const driver = make();
       const view = createDataTable(driver.doc, options());
@@ -242,6 +314,7 @@ onEveryDocument(<E extends KitElement<E>>(make: () => Driver<E>, name: string) =
       driver.type(root.one('input[type="search"]'), 'node');
       assert.deepEqual(view.order(), [0]);
     });
+
     /** Each shown-or-hidden body row's cells' labels, row by row. */
     function labels(root: DomNode): (string | null)[][] {
       return root.all('tr.kit-table__row').map((row) => row.all('td').map((cell) => cell.attribute('data-kit-label')));
@@ -249,15 +322,16 @@ onEveryDocument(<E extends KitElement<E>>(make: () => Driver<E>, name: string) =
 
     test('every body cell carries data-kit-label = its column header — the reveal cell too — and still does after setRows, a sort and a search; the empty row carries none', () => {
       const driver = make();
-      const view = createDataTable(driver.doc, options({ emptyText: 'No process matches.' }));
+      const log: unknown[][] = [];
+      const view = createDataTable(driver.doc, options({ emptyText: 'No process matches.' }, log));
       const root = driver.attach(view.root);
       const expected = ['PID', 'Program', 'Held', 'Note', 'Command line'];
       assert.deepEqual(labels(root), ROWS.map(() => expected));
       view.sortBy('program', 'descending');
       view.filter('o');
       view.setRows([...ROWS, { pid: 1, program: 'zsh', held: 5, secret: 'SECRET-zsh' }]);
-      driver.click(root.one('tr[data-kit-row="0"]').one('button[data-kit-reveal]'));
-      assert.equal(view.reveal(0, 'shown only now'), true);
+      const request = ask(driver, root, 0, log);
+      assert.equal(view.reveal(0, 'shown only now', request), true);
       assert.deepEqual(labels(root), [...ROWS, ROWS[0]].map(() => expected));
       view.filter('zzz');
       assert.equal(root.one('tr.kit-table__empty').one('td').attribute('data-kit-label'), null, 'the empty row must show no label');
@@ -300,11 +374,12 @@ onEveryDocument(<E extends KitElement<E>>(make: () => Driver<E>, name: string) =
         assert.throws(() => createDataTable(driver.doc, { ...base, ...overrides }), (error: unknown) => error instanceof TypeError && message.test(error.message), String(message));
       }
       const view = createDataTable(driver.doc, base);
-      assert.throws(() => { view.reveal(4, 'x'); }, /there is no row 4; the rows are 0 to 3/);
-      assert.throws(() => { view.reveal(1.5, 'x'); }, /there is no row 1.5/);
-      assert.throws(() => { view.reveal(0, 7 as never); }, /must be a string, got number/);
+      assert.throws(() => { view.reveal(4, 'x', 'r'); }, /there is no row 4; the rows are 0 to 3/);
+      assert.throws(() => { view.reveal(1.5, 'x', 'r'); }, /there is no row 1.5/);
+      assert.throws(() => { view.reveal(0, 7 as never, 'r'); }, /must be a string, got number/);
+      assert.throws(() => { view.reveal(0, 'x', 7 as never); }, /the request must be a string, got number/);
       const { reveal: _reveal, ...withoutReveal } = base;
-      assert.throws(() => { createDataTable(driver.doc, withoutReveal).reveal(0, 'x'); }, /this table has no reveal column/);
+      assert.throws(() => { createDataTable(driver.doc, withoutReveal).reveal(0, 'x', 'r'); }, /this table has no reveal column/);
       assert.throws(() => { view.sortBy('note', 'ascending'); }, /sort key must be one of pid, program, held/);
     });
   });

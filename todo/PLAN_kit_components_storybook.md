@@ -199,10 +199,10 @@ createDataTable(doc, {
   ],
   rows,
   search: { label: 'Search processes' },             // optional
-  reveal: { header: 'Command line', button: (row) => `Show the command line of ${row.program}`, onReveal: (index) => post({ type: 'reveal', index }) }, // optional
+  reveal: { header: 'Command line', button: (row) => `Show the command line of ${row.program}`, onReveal: (index, request) => post({ type: 'reveal', index, request }), waitingText: 'Waiting…' }, // optional
   emptyText: 'No process matches.',                  // optional, English default
   sort: { key: 'held', direction: 'descending' },    // optional initial sort
-}) → { root, setRows(rows), reveal(index, text) → boolean, sortBy(key, direction), filter(query), order() }
+}) → { root, setRows(rows), reveal(index, text, request) → boolean, sortBy(key, direction), filter(query), order() }
 ```
 
 - **Values and formats are the consumer's.** `value(row)` is `string | number | null` and is what sorts;
@@ -223,11 +223,11 @@ createDataTable(doc, {
   row spanning every column with `emptyText`.
 - **Reveal posts only an index, and the hidden text is never in the DOM before it is revealed.** The reveal
   column holds, per row, a `button type=button` with the consumer's `button(row)` text as its `aria-label` and
-  `Show` as its text; a click calls `onReveal(index)` with ONE argument, the row's index in the `rows` the
+  `Show` as its text; a click calls `onReveal(index, request)`: the row's index in the `rows` the
   consumer gave (not its position after a sort or a search). The kit never receives the hidden text until the
-  consumer calls `reveal(index, text)`, which replaces THAT row's button with the text and answers `true`. **A reveal
+  consumer calls `reveal(index, text, request)`, which replaces THAT row's button with the text and answers `true`. **A reveal
   is the answer to a request** (code round, 2026-10-18): a click records the row index as pending in the CURRENT rows;
-  `reveal(index, text)` applies only to a pending index and clears it, and otherwise answers `false` and changes nothing
+  `reveal(index, text, request)` applies only when `request` is the row's CURRENT pending request (an opaque id, unique per click for the life of the table, `<generation>:<n>`, carrying no row data) and spends it, and otherwise answers `false` and changes nothing
   (no throw: a slow host reply must not crash the page). `setRows` drops every revealed text AND every pending request —
   a late reply for the old row 3 never lands on the new row 3. A revealed text is searchable like any shown text, until
   `setRows` drops it.
@@ -663,3 +663,8 @@ file for the English defaults (all overridable), a search debounce and virtualiz
 §4.6a lays every row out), immutability of the component's internal state (it never escapes), a POST_DEPLOY item for the
 components (item 5's `pack-and-consume --published` already imports both subpaths from the published tarball), and a
 concrete version in POST_DEPLOY's instruction (the stamp stays concrete).
+
+**Code round 2 (good_enough), 2026-10-18 — two accepted changes, as built.**
+
+13. A reveal reply carries a REQUEST TOKEN: `onReveal(index, request)` hands the consumer an opaque id (`<generation>:<n>`, unique per click for the life of the table, no row data) and `reveal(index, text, request) → boolean` applies only for the row's CURRENT pending request, then spends it. A missing, unknown, older, spent, or pre-`setRows` request answers `false`; this closes the hole where, with a Set of indexes, the FIRST reply was accepted after the SAME row was clicked again. A request that is not a string is a `TypeError`; the existing refusals still come first.
+14. The pressed button says it waits: its text becomes `Waiting…` (`reveal.waitingText` overrides it), it gains `kit-table__reveal--pending` (a muted rule in `components.css`), and a click on a waiting button does nothing, so `onReveal` is told once. The revealed text replaces it; `setRows` resets it. The gallery's `revealed` case now shows one revealed row and one waiting row.

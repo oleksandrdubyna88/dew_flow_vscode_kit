@@ -40,10 +40,16 @@ export interface DataTableReveal<Row> {
   readonly header: string;
   /** The reveal button's accessible name for a row — say WHAT it reveals, and of which row. */
   readonly button: (row: Row) => string;
-  /** Told the row's index in `rows` — and nothing else — when a person asks to reveal it. */
-  readonly onReveal: (index: number) => void;
+  /**
+   * Told the row's index in `rows` and an opaque REQUEST id - nothing about the row - when a person asks to reveal it. The
+   * consumer hands the request back with its answer (`reveal(index, text, request)`); the id is unique per click for the life
+   * of the table. A click on a button that is still waiting for its answer does nothing, so `onReveal` is told once.
+   */
+  readonly onReveal: (index: number, request: string) => void;
   /** The button's visible text; `Show` when absent. */
   readonly buttonText?: string;
+  /** What the button says while it waits for the consumer's answer; `Waiting…` when absent. */
+  readonly waitingText?: string;
 }
 
 export interface DataTableSort {
@@ -85,12 +91,13 @@ export interface DataTableView<E, Row> {
   /** Replaces the rows; every revealed value is dropped, the sort and the search are kept. */
   setRows(rows: readonly Row[]): void;
   /**
-   * Shows `text` in row `index`'s reveal cell — the consumer's answer to an `onReveal(index)` — and answers `true`. A reply
-   * for a row nobody asked about in the CURRENT rows (no click, or the click came before `setRows`, or it was answered already)
-   * changes nothing and answers `false`: a slow host reply must never land on a new row, and must not crash the page.
-   * Refused with a `TypeError`: an index outside the rows, a table with no reveal column, a text that is not a string.
+   * Shows `text` in row `index`'s reveal cell — the consumer's answer to an `onReveal(index, request)` — and answers `true`.
+   * It applies only when `request` is the CURRENT pending request for that row in the current rows; then the request is spent.
+   * A missing, unknown, older or already answered request, or one from before `setRows`, changes nothing and answers `false`:
+   * a slow host reply must never land on a new row (not even when the same row is clicked again), and must not crash the page.
+   * Refused with a `TypeError`: an index outside the rows, a table with no reveal column, a text or a request that is not a string.
    */
-  reveal(index: number, text: string): boolean;
+  reveal(index: number, text: string, request: string): boolean;
   sortBy(key: string, direction: SortDirection): void;
   /** Filters as the search box does, and shows the query in the box; a query that is not a string is a `TypeError`. */
   filter(query: string): void;
@@ -104,6 +111,8 @@ interface RowView<E> {
   readonly texts: readonly string[];
   readonly values: readonly CellValue[];
   readonly revealCell: E | undefined;
+  /** The reveal button, which says it is waiting once it is pressed. */
+  readonly revealButton: E | undefined;
   /** The text the consumer revealed for this row, searchable like any shown text; dropped with the row by `setRows`. */
   revealed: string | undefined;
 }
@@ -123,13 +132,20 @@ interface State<E, Row> {
   views: RowView<E>[];
   sort: DataTableSort | undefined;
   query: string;
-  /** Row indexes a person asked to reveal in the CURRENT rows and the consumer has not answered; `setRows` empties it. */
-  readonly pending: Set<number>;
+  /** Row index -> the request a person made for it in the CURRENT rows and the consumer has not answered; `setRows` empties it. */
+  readonly pending: Map<number, string>;
+  /** How many times `setRows` has run: part of every request id, so an id never means two things. */
+  generation: number;
+  /** Requests made so far; never reset, so two clicks never share an id. */
+  requests: number;
 }
 
 const ABSENT = '—';
 const DEFAULT_EMPTY = 'No rows match.';
 const DEFAULT_SHOW = 'Show';
+const DEFAULT_WAITING = 'Waiting…';
+const BUTTON_CLASS = 'kit-table__reveal-button';
+const PENDING_CLASS = 'kit-table__reveal--pending';
 
 const defaultCount = (shown: number, total: number): string => `Showing ${shown} of ${total} rows.`;
 
@@ -214,22 +230,27 @@ function rowView<E extends KitElement<E>, Row>(doc: KitDocument<E>, options: Dat
   const texts = options.columns.map((column, at) => shown(column, values[at] ?? null, row));
   const tr = attributes(element(doc, 'tr', 'kit-table__row'), { 'data-kit-row': String(index) });
   options.columns.forEach((column, at) => { tr.appendChild(attributes(element(doc, 'td', cellClass(column), texts[at]), { 'data-kit-label': column.header })); });
-  const revealCell = options.reveal === undefined ? undefined : revealCellOf(doc, options.reveal, row, index, onAsk);
-  if (revealCell !== undefined) {
-    tr.appendChild(revealCell);
+  const reveal = options.reveal === undefined ? undefined : revealCellOf(doc, options.reveal, row, index, onAsk);
+  if (reveal !== undefined) {
+    tr.appendChild(reveal.cell);
   }
 
-  return { tr, texts, values, revealCell, revealed: undefined };
+  return rowViewOf(tr, texts, values, reveal);
 }
 
-/** A reveal cell holding its button; the button tells the consumer this row's index, and nothing else. */
-function revealCellOf<E extends KitElement<E>, Row>(doc: KitDocument<E>, reveal: DataTableReveal<Row>, row: Row, index: number, onAsk: (index: number) => void): E {
-  const button = attributes(element(doc, 'button', 'kit-table__reveal-button', reveal.buttonText ?? DEFAULT_SHOW), {
+/** The row's parts as the state keeps them; a table with no reveal column has neither cell nor button. */
+function rowViewOf<E>(tr: E, texts: readonly string[], values: readonly CellValue[], reveal: { cell: E; button: E } | undefined): RowView<E> {
+  return { tr, texts, values, revealCell: reveal?.cell, revealButton: reveal?.button, revealed: undefined };
+}
+
+/** A reveal cell holding its button; the button asks for this row's index, and the consumer is told nothing else of the row. */
+function revealCellOf<E extends KitElement<E>, Row>(doc: KitDocument<E>, reveal: DataTableReveal<Row>, row: Row, index: number, onAsk: (index: number) => void): { cell: E; button: E } {
+  const button = attributes(element(doc, 'button', BUTTON_CLASS, reveal.buttonText ?? DEFAULT_SHOW), {
     type: 'button', 'aria-label': text(reveal.button(row), 'DataTable reveal.button(row)'), 'data-kit-reveal': String(index),
   });
   button.addEventListener('click', () => { onAsk(index); });
 
-  return children(attributes(element(doc, 'td', 'kit-table__reveal'), { 'data-kit-label': reveal.header }), button);
+  return { cell: children(attributes(element(doc, 'td', 'kit-table__reveal'), { 'data-kit-label': reveal.header }), button), button };
 }
 
 /** A header: a sort button inside a `th scope=col aria-sort=none`, or plain text for a column that does not sort. */
@@ -350,7 +371,7 @@ function headClass(current: string, direction: SortDirection | undefined): strin
 
 export function createDataTable<E extends KitElement<E>, Row>(doc: KitDocument<E>, options: DataTableOptions<Row>): DataTableView<E, Row> {
   const spec = checked(options);
-  const state: State<E, Row> = { rows: [], views: [], sort: spec.sort, query: '', pending: new Set() };
+  const state: State<E, Row> = { rows: [], views: [], sort: spec.sort, query: '', pending: new Map(), generation: 0, requests: 0 };
   const repaint = (): void => { paint(parts, state, spec); };
   const onSort = (key: string): void => {
     const direction: SortDirection = state.sort?.key === key && state.sort.direction === 'ascending' ? 'descending' : 'ascending';
@@ -364,14 +385,21 @@ export function createDataTable<E extends KitElement<E>, Row>(doc: KitDocument<E
     children(root, searchParts.search, searchParts.count);
   }
   const parts: Parts<E> = { root: children(root, table), tbody, empty: emptyRowOf(doc, spec), count: searchParts?.count, search: searchParts?.search, heads };
-  // A click is recorded as pending BEFORE the consumer hears of it, so its answer can find it; `load` empties the set.
+  // A click makes a REQUEST, recorded BEFORE the consumer hears of it so its answer can find it; `load` empties them. A button
+  // that is already waiting does nothing: one question per row at a time.
   const ask = (index: number): void => {
-    state.pending.add(index);
-    spec.reveal?.onReveal(index);
+    if (!state.pending.has(index)) {
+      state.requests += 1;
+      const request = `${state.generation}:${state.requests}`;
+      state.pending.set(index, request);
+      markWaiting(state, spec, index);
+      spec.reveal?.onReveal(index, request);
+    }
   };
   const load = (rows: readonly Row[]): void => {
     tbody.textContent = '';
     state.rows = checkedRows(rows);
+    state.generation += 1;
     state.pending.clear();
     state.views = rows.map((row, index) => rowView(doc, spec, row, index, ask));
     repaint();
@@ -397,7 +425,7 @@ function view<E extends KitElement<E>, Row>(parts: Parts<E>, state: State<E, Row
   return {
     root: parts.root,
     setRows: (rows) => { ops.load(rows); },
-    reveal: (index, revealed) => revealRow(state, spec, index, revealed, ops.repaint),
+    reveal: (index, revealed, request) => revealRow(state, spec, index, { revealed, request }, ops.repaint),
     sortBy: (key, direction) => {
       state.sort = checkedSort(spec.columns, key, direction);
       ops.repaint();
@@ -413,20 +441,57 @@ function view<E extends KitElement<E>, Row>(parts: Parts<E>, state: State<E, Row
   };
 }
 
-/** The consumer's answer to `onReveal(index)`: the text goes into THAT row's reveal cell, and nowhere else. */
-function revealRow<E extends KitElement<E>, Row>(state: State<E, Row>, spec: DataTableOptions<Row>, index: number, revealed: string, repaint: () => void): boolean {
-  const cell = revealCellAt(state, spec, index);
+/** The pressed button says it waits: the consumer's `waitingText`, and a class the stylesheet mutes. */
+function markWaiting<E extends KitElement<E>, Row>(state: State<E, Row>, spec: DataTableOptions<Row>, index: number): void {
+  const button = rowAt(state, index)?.revealButton;
+  if (button !== undefined) {
+    button.textContent = waitingLabel(spec.reveal);
+    button.className = `${BUTTON_CLASS} ${PENDING_CLASS}`;
+  }
+}
+
+/** What a waiting button says: the consumer's `waitingText`, else the English default. */
+function waitingLabel<Row>(reveal: DataTableReveal<Row> | undefined): string {
+  return reveal?.waitingText ?? DEFAULT_WAITING;
+}
+
+/** The revealed text: a string, or a `TypeError` naming what it was. */
+function checkedRevealed(revealed: unknown): void {
   if (typeof revealed !== 'string') {
     throw new TypeError(`DataTable reveal: the revealed text must be a string, got ${typeof revealed}.`);
   }
-  if (!state.pending.delete(index)) {
+}
+
+/** Whether `request` is the row's CURRENT pending request; an absent request is never current. */
+function isCurrent<E, Row>(state: State<E, Row>, index: number, request: string | undefined): boolean {
+  return request !== undefined && state.pending.get(index) === request;
+}
+
+/** A reply's request: a string, absent (`undefined` - then no request can match), or a `TypeError` naming what it was. */
+function checkedRequest(request: unknown): string | undefined {
+  if (request !== undefined && typeof request !== 'string') {
+    throw new TypeError(`DataTable reveal: the request must be a string, got ${request === null ? 'null' : typeof request}.`);
+  }
+
+  return request;
+}
+
+/**
+ * The consumer's answer to `onReveal(index, request)`: the text goes into THAT row's reveal cell, and nowhere else, and only for
+ * the row's CURRENT request - one from before `setRows`, an older click of the same row, a spent or unknown one answers false.
+ */
+function revealRow<E extends KitElement<E>, Row>(state: State<E, Row>, spec: DataTableOptions<Row>, index: number, answer: { revealed: string; request: string | undefined }, repaint: () => void): boolean {
+  const cell = revealCellAt(state, spec, index);
+  checkedRevealed(answer.revealed);
+  if (!isCurrent(state, index, checkedRequest(answer.request))) {
     return false;
   }
-  cell.textContent = revealed;
+  state.pending.delete(index);
+  cell.textContent = answer.revealed;
   cell.className = 'kit-table__reveal kit-table__reveal--shown';
   const view = rowAt(state, index);
   if (view !== undefined) {
-    view.revealed = revealed;
+    view.revealed = answer.revealed;
   }
   repaint();
 

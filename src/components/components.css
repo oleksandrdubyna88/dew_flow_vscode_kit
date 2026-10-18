@@ -245,6 +245,13 @@
   cursor: pointer;
 }
 
+/* A reveal button that has been pressed and waits for the consumer's answer: muted, no longer link-like. */
+.kit-table__reveal--pending {
+  color: var(--kit-muted-fg);
+  text-decoration: none;
+  cursor: progress;
+}
+
 .kit-table__empty-cell {
   padding: 0.5em 0;
   color: var(--kit-muted-fg);

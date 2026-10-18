@@ -285,10 +285,14 @@ const table = createDataTable(document, {
   reveal: {
     header: 'Command line',
     button: (row) => `Show the command line of ${row.program}`,
-    onReveal: (index) => vscode.postMessage({ type: 'reveal', index }),   // the kit tells you an index, nothing else
+    onReveal: (index, request) => vscode.postMessage({ type: 'reveal', index, request }),   // an index and an opaque request id, nothing of the row
   },
 });
-// when the host answers: table.reveal(index, commandLine) -> true; a reply for a row nobody asked about in the current rows
+// when the host answers: table.reveal(index, commandLine, request) -> true, with the request id it was told. A reply with no
+// request, another or an older one, one answered already, or one from before a setRows (even when the same row was clicked
+// again) changes nothing and answers false. While it waits the button says "Waiting…" (`waitingText` to change it); a click
+// on a waiting button does nothing, so onReveal is told once.
+// Also: a reply for a row nobody asked about in the current rows
 // (no click, or the click came before a setRows) changes nothing and answers false. A fresh poll: table.setRows(rows) (revealed values drop)
 
 const card = createRecommendationCard(document, {

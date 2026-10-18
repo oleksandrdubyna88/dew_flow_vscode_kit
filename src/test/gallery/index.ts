@@ -149,13 +149,24 @@ const TABLE: readonly GalleryCase[] = [
     },
   },
   {
-    // A reveal is the answer to a request: a person presses the row's button, the consumer replies. The spy document lets the
-    // case press it before there is a page to dispatch in; a reply with no press is refused (`reveal` answers false).
-    kind: 'dom', id: 'revealed', title: 'One row revealed', render: (doc) => {
+    // A reveal is the answer to a request: a person presses the row's button, the consumer replies with the request id it was
+    // told. The spy document lets the case press buttons before there is a page to dispatch in; a reply with no press, or with
+    // another request, is refused (`reveal` answers false). Row 2 is pressed and answered; row 0 is pressed and left WAITING.
+    kind: 'dom', id: 'revealed', title: 'One row revealed, one waiting', render: (doc) => {
       const spy = spyOn(doc);
-      const reveal = { header: 'Detail', button: (row: Sample) => `Show the detail of ${row.name}`, onReveal: (index: number) => { view.reveal(index, 'charlie --detail=shown-only-on-request'); } };
+      const reveal = {
+        header: 'Detail',
+        button: (row: Sample) => `Show the detail of ${row.name}`,
+        onReveal: (index: number, request: string) => {
+          if (index === 2) {
+            view.reveal(index, 'charlie --detail=shown-only-on-request', request);
+          }
+        },
+      };
       const view = createDataTable(spy.doc, tableOptions({ reveal }));
       spy.press('data-kit-reveal', '2');
+      spy.press('data-kit-reveal', '0');
+
       return spy.unwrap(view.root);
     },
   },

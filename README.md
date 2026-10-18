@@ -489,6 +489,10 @@ provenance, and have the served file as a subject), and also asserts the integri
    - optionally, *Required reviewers*: the owner — a person approving each publish before it runs.
 4. Recommended, as on the siblings: a tag ruleset that restricts creating, moving and deleting `v*` tags
    to the App — and a probe that it refuses, since reading a ruleset back is not evidence it acts.
+5. Recommended: branch protection on `main` that REQUIRES the CI checks, `storybook build` included (it builds the
+   Storybook and runs the layout check in Chrome; `release.yml` runs neither). `main` has none today (checked 2026-10-18),
+   so a release carries a green Storybook and layout check only because pull requests are merged by hand when every check
+   is green.
 
 ### Package visibility — check it after 0.1.1
 

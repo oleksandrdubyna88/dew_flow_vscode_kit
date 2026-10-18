@@ -33,7 +33,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { build } from 'esbuild';
 
-import { removeWithRetry, runThenRemove } from './lib/cleanup.mjs';
+import { EnvironmentError, endpointOf, removeWithRetry, runThenRemove, startOrEnd } from './lib/cleanup.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PROFILE = join(ROOT, 'testsToDelete-layout-check');
@@ -53,8 +53,6 @@ const PLANTS = [
   ['a min-width of 40em on the table grid', '\n.kit-table__grid { min-width: 40em; }\n'],
   ['white-space: nowrap on every cell', '\n.kit-table td, .kit-table th { white-space: nowrap; }\n'],
 ];
-
-class EnvironmentError extends Error {}
 
 // ---- finding and starting Chrome ------------------------------------------------------------------------------
 
@@ -94,38 +92,30 @@ function findChrome() {
   return found;
 }
 
-/** Starts Chrome on its own profile and answers its handle with the DevTools endpoint it opened. */
-async function launch(chrome) {
+/** Starts Chrome on its own profile and answers its handle with the DevTools endpoint it opened - or ends it and throws. */
+function launch(chrome) {
   // A port file left by an earlier run names a port nobody listens on any more.
-  rmSync(join(PROFILE, 'DevToolsActivePort'), { force: true });
+  const portFile = join(PROFILE, 'DevToolsActivePort');
+  rmSync(portFile, { force: true });
   const args = [
     '--headless=new', '--disable-gpu', '--hide-scrollbars', '--no-first-run', '--no-default-browser-check', '--allow-file-access-from-files',
     ...(process.platform === 'linux' ? ['--no-sandbox'] : []),
     `--user-data-dir=${PROFILE}`, '--remote-debugging-port=0', 'about:blank',
   ];
-  const child = spawn(chrome, args, { stdio: 'ignore' });
-  const exited = new Promise((done) => { child.once('exit', done); });
-  child.once('error', () => undefined);
-  const endpoint = await endpointOf(child);
 
-  return { child, exited, endpoint };
+  return startOrEnd({
+    spawnChild: () => {
+      const child = spawn(chrome, args, { stdio: 'ignore' });
+      const exited = new Promise((done) => { child.once('exit', done); });
+      child.once('error', () => undefined);
+
+      return { child, exited };
+    },
+    endpointOf: ({ child }) => endpointOf(child, { portFile, waitMs: WAIT_MS }),
+    end: ({ child }) => { endBrowser(child); },
+    waitForExit: ({ exited }) => Promise.race([exited, sleep(10_000)]),
+  });
 }
-
-async function endpointOf(child) {
-  const portFile = join(PROFILE, 'DevToolsActivePort');
-  for (let waited = 0; waited < WAIT_MS; waited += 100) {
-    await sleep(100);
-    if (child.exitCode !== null) {
-      throw new EnvironmentError(`Chrome exited with code ${child.exitCode} before it opened its DevTools port.`);
-    }
-    const [port, path] = existsSync(portFile) ? readFileSync(portFile, 'utf8').split('\n') : [];
-    if (port && path) {
-      return `ws://127.0.0.1:${port.trim()}${path.trim()}`;
-    }
-  }
-  throw new EnvironmentError(`Chrome did not open its DevTools port within ${WAIT_MS / 1000} s.`);
-}
-
 // ---- the DevTools protocol, over Node's own WebSocket -----------------------------------------------------------
 
 class Devtools {

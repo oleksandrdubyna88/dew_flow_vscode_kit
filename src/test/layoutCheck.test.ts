@@ -127,8 +127,8 @@ test('an unknown argument is a usage error, exit 2, before any browser is looked
 const CLEANUP = pathToFileURL(path.join(ROOT, 'scripts', 'lib', 'cleanup.mjs')).href;
 
 function inChild(body: string): void {
-  const code = ['import assert from "node:assert/strict";', 'const { removeWithRetry, runThenRemove } = await import(process.env.KIT_LIB);', body].join('\n');
-  const ran = spawnSync(process.execPath, ['--input-type=module', '-e', code], { encoding: 'utf8', timeout: 30_000, env: { ...process.env, KIT_LIB: CLEANUP } });
+  const code = ['import assert from "node:assert/strict";', 'const { EnvironmentError, endpointOf, removeWithRetry, runThenRemove, startOrEnd } = await import(process.env.KIT_LIB);', body].join('\n');
+  const ran = spawnSync(process.execPath, ['--input-type=module', '-e', code], { encoding: 'utf8', timeout: 30_000, env: { ...process.env, KIT_LIB: CLEANUP, KIT_PORT_FILE: path.join(os.tmpdir(), 'kit-no-such-port-file') } });
   assert.equal(ran.error, undefined, `could not run: ${String(ran.error)}`);
   assert.equal(ran.status, 0, `${ran.stdout}${ran.stderr}`);
 }
@@ -175,5 +175,82 @@ test('a removal that works is silent: no warning, the run\'s answer unchanged', 
     const warned = [];
     const outcome = await runThenRemove(async () => 1, { stop: async () => undefined, remove: async () => undefined, warn: (error) => warned.push(error.message) });
     assert.equal(outcome, 1); assert.deepEqual(warned, []);
+  `);
+});
+
+test('a browser that never opens its DevTools port is ENDED by the handle it was started with, its exit awaited, and the port-timeout error is what is thrown', () => {
+  inChild(`
+    const child = { exitCode: null, id: 'fake-chrome' }; const ended = []; const waited = [];
+    const failure = await startOrEnd({
+      spawnChild: () => ({ child }),
+      endpointOf: ({ child }) => endpointOf(child, { portFile: process.env.KIT_PORT_FILE, waitMs: 60, pollMs: 5 }),
+      end: (started) => { ended.push(started.child.id); },
+      waitForExit: async (started) => { waited.push(started.child.id); },
+    }).then(() => assert.fail('it started'), (error) => error);
+    assert.ok(failure instanceof EnvironmentError, String(failure));
+    assert.match(failure.message, /Chrome did not open its DevTools port within 0\\.06 s/);
+    assert.deepEqual(ended, ['fake-chrome']); assert.deepEqual(waited, ['fake-chrome']);
+  `);
+});
+
+test('a browser that exits before it opens its port is still ended by handle, and that error is what is thrown', () => {
+  inChild(`
+    const ended = [];
+    const failure = await startOrEnd({
+      spawnChild: () => ({ child: { exitCode: 7, id: 'dead-chrome' } }),
+      endpointOf: ({ child }) => endpointOf(child, { portFile: process.env.KIT_PORT_FILE, waitMs: 60, pollMs: 5 }),
+      end: (started) => { ended.push(started.child.id); },
+      waitForExit: async () => undefined,
+    }).then(() => assert.fail('it started'), (error) => error);
+    assert.match(failure.message, /Chrome exited with code 7 before it opened its DevTools port/);
+    assert.deepEqual(ended, ['dead-chrome']);
+  `);
+});
+
+test('a browser that opens its port is returned with its endpoint and is NOT ended', () => {
+  inChild(`
+    const fs = await import('node:fs'); const os = await import('node:os'); const path = await import('node:path');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-port-'));
+    const portFile = path.join(dir, 'DevToolsActivePort'); fs.writeFileSync(portFile, '9222\\n/devtools/browser/abc\\n');
+    try {
+      const ended = [];
+      const started = await startOrEnd({
+        spawnChild: () => ({ child: { exitCode: null, id: 'live-chrome' } }),
+        endpointOf: ({ child }) => endpointOf(child, { portFile, waitMs: 1000, pollMs: 5 }),
+        end: (s) => { ended.push(s.child.id); }, waitForExit: async () => undefined,
+      });
+      assert.equal(started.endpoint, 'ws://127.0.0.1:9222/devtools/browser/abc'); assert.equal(started.child.id, 'live-chrome'); assert.deepEqual(ended, []);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  `);
+});
+
+test('a port file Chrome still holds open (EBUSY on Windows) is "not yet", not a failure: the endpoint is read on a later poll', () => {
+  inChild(`
+    const fs = await import('node:fs'); const os = await import('node:os'); const path = await import('node:path');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-busy-')); const portFile = path.join(dir, 'DevToolsActivePort'); fs.writeFileSync(portFile, 'held open by Chrome');
+    let reads = 0;
+    const read = () => { reads += 1; if (reads <= 2) { throw Object.assign(new Error('EBUSY: resource busy or locked'), { code: 'EBUSY' }); } return '9222\\n/devtools/browser/abc\\n'; };
+    try {
+      const endpoint = await endpointOf({ exitCode: null }, { portFile, waitMs: 1000, pollMs: 5, read });
+      assert.equal(endpoint, 'ws://127.0.0.1:9222/devtools/browser/abc'); assert.equal(reads, 3);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  `);
+});
+
+test('a port file that NEVER becomes readable still ends in the bounded port timeout, and the error names the unreadable file and its code', () => {
+  inChild(`
+    const fs = await import('node:fs'); const os = await import('node:os'); const path = await import('node:path');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-busy-')); const portFile = path.join(dir, 'DevToolsActivePort'); fs.writeFileSync(portFile, 'held open by Chrome');
+    let reads = 0;
+    const read = () => { reads += 1; throw Object.assign(new Error('EBUSY: resource busy or locked'), { code: 'EBUSY' }); };
+    try {
+      await assert.rejects(endpointOf({ exitCode: null }, { portFile, waitMs: 50, pollMs: 5, read }), (error) => {
+        assert.ok(error instanceof EnvironmentError, 'not an EnvironmentError: ' + error);
+        assert.match(error.message, /did not open its DevTools port within 0\\.05 s/);
+        assert.match(error.message, /could not be read: EBUSY/);
+        return true;
+      });
+      assert.ok(reads > 1, 'the unreadable file was not polled more than once');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   `);
 });

@@ -263,6 +263,11 @@ one row of one height, and a distro picker on wsl_care's WSL tab — are the con
   `CHROME_PATH`, then the platform's usual install paths; none found is a RED run that says so, never a skip. CI runs
   it on ubuntu (Google Chrome is on GitHub's image) in the `storybook` job. Its profile lives in a git-ignored
   `testsToDelete-layout-check/` that the script removes in a `finally`.
+  **Release boundary:** the layout check runs only in CI's `storybook` job (ubuntu, Chrome), never in `release.yml`, and `main` has
+  NO branch protection (checked 2026-10-18: `gh api repos/oleksandrdubyna88/dew_flow_vscode_kit/branches/main/protection` answers 404).
+  A release therefore carries a green layout check only because pull requests - the release-please one included - are merged by
+  hand, and only when every check, `storybook build` included, is green. That is a working rule, not an enforcement; making
+  `storybook build` a required check is the owner's setting (README, *What the owner creates once*, recommends it).
 
 ### 4.7 `RecommendationCard`
 
@@ -433,8 +438,10 @@ The surface, the stylesheet, the package (`src/test/componentsCss.test.ts`, `con
 The consumer fixture (`test/consumer-fixture/`, run by `pack-and-consume`, §6):
 24. a webview entry `src/webview.ts` importing `…/components` and `…/components.css` type-checks against the
     INSTALLED `.d.ts` with `lib: DOM` (a real `document` passed, no cast) and bundles for `platform: 'browser'`,
-    `format: 'iife'`; the CSS output exists and carries the token block — and with `sideEffects: false` restored
-    it does not (the break-it that proves the step watches the CSS).
+    `format: 'iife'`; the CSS output exists and carries the token block. (Written first as "and with `sideEffects: false`
+    restored it does not"; refuted by the break-it, §11: esbuild 0.28.2 emits the CSS either way, webpack and Rollup honour the
+    field. The guard for `sideEffects` is item 23's manifest assertion in `packaging.test.ts`, not this step; this step's own
+    teeth are a fixture entry without the CSS import, which fails at `bundle`.)
 
 Fit, never scroll (§4.6a — `src/test/dataTable.test.ts`, `componentsCss.test.ts`, `scripts/layout-check.mjs`):
 25. every body cell's `data-kit-label` equals its column's header, after `setRows`, a sort and a search; the empty row
@@ -457,7 +464,7 @@ reveal callback handed the DISPLAY position instead of the row index; the reveal
 `setRows` keeping revealed texts; a component class with no CSS rule; the ok tone mapped to
 `testing-iconPassed` (Light Modern `#73C991` on white); the warning tone without its `editorWarning-foreground`
 fallback (high contrast has no `list-warningForeground`); the components entry importing `../webview/nonce`;
-`sideEffects: false`; a CSF story removed. Never a tripwire disabled or weakened to make a break-it work.
+`sideEffects: false` (caught by `packaging.test.ts`' manifest assertion — not by the esbuild step, §11); a CSF story removed. Never a tripwire disabled or weakened to make a break-it work.
 
 ### 5.4 Contrast (`src/test/contrast.test.ts`)
 
@@ -617,6 +624,8 @@ stylesheet before 4.6a: `the page scrolls sideways: 363px of 300px`).
   throwaway profile has nothing to close politely: `taskkill /T` of its own PID on Windows, the handle's `kill()`
   elsewhere) and removes the folder in its own bounded retry loop of up to two minutes (`scripts/lib/cleanup.mjs`). A folder that stays busy only prints a warning on stderr: the check's own result — its error or its pass — stands. `taskkill` has a 30 s ceiling. Seen RED on every run while the machine was loaded (exit 1, `FAILED -
   EPERM, Permission denied`), green after the fix (exit 0, no folder left) on the same machine. The retry and "a failed removal never replaces the run's result" are unit-tested with a fake removal in layoutCheck.test.ts (red first against a removal that propagated: the run's error was replaced by `EPERM busy`, and a passing run threw); the Windows timing itself needs Chrome and a loaded machine, so it is not; `layoutCheck.test.ts`'s `CHROME_PATH` tests (item 27's no-browser exit) pass.
+- **A Chrome that never opened its DevTools port was never ended** (the gate's cadence consultation, verified): `launch` spawned it, `endpointOf` threw, the caller never got `started` and so `shutDown` could not reach the child - an orphan holding the profile. `startOrEnd` (`scripts/lib/cleanup.mjs`) now ends the child by its own handle, awaits its exit (bounded, 10 s) and rethrows the original error. Red first with a fake child that never writes the port file (`actual: [], expected: [ 'fake-chrome' ]`: nothing was ended), green after; the break-it - the kill-on-failure removed - is red with the same line, restored byte-identical.
+- **A port file Chrome still held open ended a run.** On a loaded machine a green-so-far run died with `EBUSY: resource busy or locked, open '...DevToolsActivePort'`: `endpointOf` read the file while Chrome was writing it and let the lock error out. A locked or unreadable port file is now "not yet" (the next poll reads it; the wait stays bounded by `WAIT_MS`). Red first with an injected reader that throws `EBUSY` twice (`Error: EBUSY: resource busy or locked` out of `endpointOf`), green after. The same run showed the new kill-on-failure working: the failed start left no folder behind.
 - **Break-it of the `CHROME_PATH` test:** `findChrome` made to fall back when `CHROME_PATH` names nothing turns the test
   RED with the real symptom (`actual: 0, expected: 3` — another browser ran the whole check and passed); restored
   byte-identical.

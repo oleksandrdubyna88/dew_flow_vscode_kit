@@ -356,8 +356,9 @@ to model, and what the kit's own strict fake enforces.
 `No rows match.`, `Show`, and `Evidence`.
 
 **The reveal** tells the consumer a row's index in the rows it gave — after a sort or a search, still that index — and
-nothing else; the hidden text enters the DOM only through `reveal(index, text)`, into that row's cell alone, and
-`setRows` drops every revealed text. **Tabs** select on a person's click or key (arrows wrap; Home, End), tell
+nothing else; the hidden text enters the DOM only through `reveal(index, text)`, into that row's cell alone and only for a row a person
+asked about in the current rows (otherwise it answers `false` and changes nothing), and `setRows` drops every revealed text and every
+pending request. **Tabs** select on a person's click or key (arrows wrap; Home, End), tell
 `onSelect` only then, and take a status mark (a tone AND its word) live through `setStatus`. **The card** places ONE
 button the consumer built — anything but a `BUTTON` is refused — and wires nothing on it.
 

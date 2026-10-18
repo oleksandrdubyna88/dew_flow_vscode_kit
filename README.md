@@ -288,7 +288,8 @@ const table = createDataTable(document, {
     onReveal: (index) => vscode.postMessage({ type: 'reveal', index }),   // the kit tells you an index, nothing else
   },
 });
-// when the host answers: table.reveal(index, commandLine); a fresh poll: table.setRows(rows) (revealed values drop)
+// when the host answers: table.reveal(index, commandLine) -> true; a reply for a row nobody asked about in the current rows
+// (no click, or the click came before a setRows) changes nothing and answers false. A fresh poll: table.setRows(rows) (revealed values drop)
 
 const card = createRecommendationCard(document, {
   tone: 'warning', word: 'Warning', sentence: 'Memory is low. Drop caches to free about 2.1 GiB.',

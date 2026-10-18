@@ -84,10 +84,15 @@ export interface DataTableView<E, Row> {
   readonly root: E;
   /** Replaces the rows; every revealed value is dropped, the sort and the search are kept. */
   setRows(rows: readonly Row[]): void;
-  /** Shows `text` in row `index`'s reveal cell — the consumer's answer to an `onReveal(index)`. */
-  reveal(index: number, text: string): void;
+  /**
+   * Shows `text` in row `index`'s reveal cell — the consumer's answer to an `onReveal(index)` — and answers `true`. A reply
+   * for a row nobody asked about in the CURRENT rows (no click, or the click came before `setRows`, or it was answered already)
+   * changes nothing and answers `false`: a slow host reply must never land on a new row, and must not crash the page.
+   * Refused with a `TypeError`: an index outside the rows, a table with no reveal column, a text that is not a string.
+   */
+  reveal(index: number, text: string): boolean;
   sortBy(key: string, direction: SortDirection): void;
-  /** Filters as the search box does, and shows the query in the box. */
+  /** Filters as the search box does, and shows the query in the box; a query that is not a string is a `TypeError`. */
   filter(query: string): void;
   /** The shown rows' indexes, in the order shown. */
   order(): number[];
@@ -99,6 +104,8 @@ interface RowView<E> {
   readonly texts: readonly string[];
   readonly values: readonly CellValue[];
   readonly revealCell: E | undefined;
+  /** The text the consumer revealed for this row, searchable like any shown text; dropped with the row by `setRows`. */
+  revealed: string | undefined;
 }
 
 /** The parts of the table the state paints. */
@@ -116,6 +123,8 @@ interface State<E, Row> {
   views: RowView<E>[];
   sort: DataTableSort | undefined;
   query: string;
+  /** Row indexes a person asked to reveal in the CURRENT rows and the consumer has not answered; `setRows` empties it. */
+  readonly pending: Set<number>;
 }
 
 const ABSENT = '—';
@@ -200,25 +209,25 @@ function cellClass<Row>(column: DataColumn<Row>): string {
 }
 
 /** One row: a cell per column, then the reveal cell. */
-function rowView<E extends KitElement<E>, Row>(doc: KitDocument<E>, options: DataTableOptions<Row>, row: Row, index: number): RowView<E> {
+function rowView<E extends KitElement<E>, Row>(doc: KitDocument<E>, options: DataTableOptions<Row>, row: Row, index: number, onAsk: (index: number) => void): RowView<E> {
   const values = options.columns.map((column) => cellValue(column, row));
   const texts = options.columns.map((column, at) => shown(column, values[at] ?? null, row));
   const tr = attributes(element(doc, 'tr', 'kit-table__row'), { 'data-kit-row': String(index) });
   options.columns.forEach((column, at) => { tr.appendChild(attributes(element(doc, 'td', cellClass(column), texts[at]), { 'data-kit-label': column.header })); });
-  const revealCell = options.reveal === undefined ? undefined : revealCellOf(doc, options.reveal, row, index);
+  const revealCell = options.reveal === undefined ? undefined : revealCellOf(doc, options.reveal, row, index, onAsk);
   if (revealCell !== undefined) {
     tr.appendChild(revealCell);
   }
 
-  return { tr, texts, values, revealCell };
+  return { tr, texts, values, revealCell, revealed: undefined };
 }
 
 /** A reveal cell holding its button; the button tells the consumer this row's index, and nothing else. */
-function revealCellOf<E extends KitElement<E>, Row>(doc: KitDocument<E>, reveal: DataTableReveal<Row>, row: Row, index: number): E {
+function revealCellOf<E extends KitElement<E>, Row>(doc: KitDocument<E>, reveal: DataTableReveal<Row>, row: Row, index: number, onAsk: (index: number) => void): E {
   const button = attributes(element(doc, 'button', 'kit-table__reveal-button', reveal.buttonText ?? DEFAULT_SHOW), {
     type: 'button', 'aria-label': text(reveal.button(row), 'DataTable reveal.button(row)'), 'data-kit-reveal': String(index),
   });
-  button.addEventListener('click', () => { reveal.onReveal(index); });
+  button.addEventListener('click', () => { onAsk(index); });
 
   return children(attributes(element(doc, 'td', 'kit-table__reveal'), { 'data-kit-label': reveal.header }), button);
 }
@@ -296,9 +305,14 @@ function ordered<E, Row>(state: State<E, Row>, columns: readonly DataColumn<Row>
   return sortedIndexes(state.views.map((view) => view.values[at] ?? null), sort.direction);
 }
 
-/** The shown rows, in order. */
-function visible<E, Row>(state: State<E, Row>, columns: readonly DataColumn<Row>[]): number[] {
-  return ordered(state, columns).filter((index) => matchesQuery(state.views[index]?.texts ?? [], state.query));
+/** What the search reads for a row: the texts it shows, and the text the consumer revealed for it. */
+function searchable<E>(view: RowView<E> | undefined): readonly string[] {
+  return view === undefined ? [] : [...view.texts, ...(view.revealed === undefined ? [] : [view.revealed])];
+}
+
+/** The rows of an already computed `order` that the search keeps, in that order. */
+function kept<E, Row>(state: State<E, Row>, order: readonly number[]): number[] {
+  return order.filter((index) => matchesQuery(searchable(state.views[index]), state.query));
 }
 
 /** Re-appends the rows in order (moving them), hides the ones the search leaves out, then the empty row last. */
@@ -336,7 +350,7 @@ function headClass(current: string, direction: SortDirection | undefined): strin
 
 export function createDataTable<E extends KitElement<E>, Row>(doc: KitDocument<E>, options: DataTableOptions<Row>): DataTableView<E, Row> {
   const spec = checked(options);
-  const state: State<E, Row> = { rows: [], views: [], sort: spec.sort, query: '' };
+  const state: State<E, Row> = { rows: [], views: [], sort: spec.sort, query: '', pending: new Set() };
   const repaint = (): void => { paint(parts, state, spec); };
   const onSort = (key: string): void => {
     const direction: SortDirection = state.sort?.key === key && state.sort.direction === 'ascending' ? 'descending' : 'ascending';
@@ -350,10 +364,16 @@ export function createDataTable<E extends KitElement<E>, Row>(doc: KitDocument<E
     children(root, searchParts.search, searchParts.count);
   }
   const parts: Parts<E> = { root: children(root, table), tbody, empty: emptyRowOf(doc, spec), count: searchParts?.count, search: searchParts?.search, heads };
+  // A click is recorded as pending BEFORE the consumer hears of it, so its answer can find it; `load` empties the set.
+  const ask = (index: number): void => {
+    state.pending.add(index);
+    spec.reveal?.onReveal(index);
+  };
   const load = (rows: readonly Row[]): void => {
     tbody.textContent = '';
     state.rows = checkedRows(rows);
-    state.views = rows.map((row, index) => rowView(doc, spec, row, index));
+    state.pending.clear();
+    state.views = rows.map((row, index) => rowView(doc, spec, row, index, ask));
     repaint();
   };
   load(spec.rows);
@@ -364,7 +384,7 @@ export function createDataTable<E extends KitElement<E>, Row>(doc: KitDocument<E
 /** Paints heads, rows and the count from the state. */
 function paint<E extends KitElement<E>, Row>(parts: Parts<E>, state: State<E, Row>, spec: DataTableOptions<Row>): void {
   const order = ordered(state, spec.columns);
-  const shownRows = new Set(visible(state, spec.columns));
+  const shownRows = new Set(kept(state, order));
   paintHeads(parts, state.sort);
   paintRows(parts, state, order, shownRows);
   if (parts.count !== undefined) {
@@ -377,30 +397,49 @@ function view<E extends KitElement<E>, Row>(parts: Parts<E>, state: State<E, Row
   return {
     root: parts.root,
     setRows: (rows) => { ops.load(rows); },
-    reveal: (index, revealed) => { revealRow(state, spec, index, revealed); },
+    reveal: (index, revealed) => revealRow(state, spec, index, revealed, ops.repaint),
     sortBy: (key, direction) => {
       state.sort = checkedSort(spec.columns, key, direction);
       ops.repaint();
     },
     filter: (query) => {
-      state.query = typeof query === 'string' ? query : '';
+      state.query = checkedQuery(query);
       if (parts.search !== undefined) {
         writeValue(parts.search, state.query);
       }
       ops.repaint();
     },
-    order: () => visible(state, spec.columns),
+    order: () => kept(state, ordered(state, spec.columns)),
   };
 }
 
 /** The consumer's answer to `onReveal(index)`: the text goes into THAT row's reveal cell, and nowhere else. */
-function revealRow<E extends KitElement<E>, Row>(state: State<E, Row>, spec: DataTableOptions<Row>, index: number, revealed: string): void {
+function revealRow<E extends KitElement<E>, Row>(state: State<E, Row>, spec: DataTableOptions<Row>, index: number, revealed: string, repaint: () => void): boolean {
   const cell = revealCellAt(state, spec, index);
   if (typeof revealed !== 'string') {
     throw new TypeError(`DataTable reveal: the revealed text must be a string, got ${typeof revealed}.`);
   }
+  if (!state.pending.delete(index)) {
+    return false;
+  }
   cell.textContent = revealed;
   cell.className = 'kit-table__reveal kit-table__reveal--shown';
+  const view = rowAt(state, index);
+  if (view !== undefined) {
+    view.revealed = revealed;
+  }
+  repaint();
+
+  return true;
+}
+
+/** A search query: a string, or a `TypeError` naming the type it was. */
+function checkedQuery(query: unknown): string {
+  if (typeof query !== 'string') {
+    throw new TypeError(`DataTable filter: the query must be a string, got ${query === null ? 'null' : typeof query}.`);
+  }
+
+  return query;
 }
 
 /** Row `index`'s reveal cell, or a `TypeError` saying why there is none. */

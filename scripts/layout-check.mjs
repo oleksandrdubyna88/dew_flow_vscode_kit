@@ -33,7 +33,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { build } from 'esbuild';
 
-import { EnvironmentError, endpointOf, removeWithRetry, runThenRemove, startOrEnd } from './lib/cleanup.mjs';
+import { EnvironmentError, endpointOf, removeWithRetry, runThenRemove, spawnBrowser, startOrEnd, withTimeout } from './lib/cleanup.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PROFILE = join(ROOT, 'testsToDelete-layout-check');
@@ -47,6 +47,9 @@ const THEMES = [['dark', 'vscode-dark'], ['light', 'vscode-light'], ['high-contr
 const SIZES = [['small', 'kit-story-size-small'], ['default', 'kit-story-size-default'], ['large', 'kit-story-size-large']];
 /** A loaded machine starts Chrome and loads a page slowly; a wait is a bound, never a pace. */
 const WAIT_MS = 90_000;
+/** The ceilings on the DevTools socket: opening it, and each command (a loaded machine is slow, never silent). */
+const CONNECT_MS = 30_000;
+const COMMAND_MS = 60_000;
 
 /** The planted defects of --companion: each, appended to a COPY of the stylesheet, must turn the check RED. */
 const PLANTS = [
@@ -104,18 +107,13 @@ function launch(chrome) {
   ];
 
   return startOrEnd({
-    spawnChild: () => {
-      const child = spawn(chrome, args, { stdio: 'ignore' });
-      const exited = new Promise((done) => { child.once('exit', done); });
-      child.once('error', () => undefined);
-
-      return { child, exited };
-    },
-    endpointOf: ({ child }) => endpointOf(child, { portFile, waitMs: WAIT_MS }),
+    spawnChild: () => spawnBrowser(spawn, chrome, args),
+    endpointOf: ({ child, record }) => endpointOf(child, { portFile, waitMs: WAIT_MS, startError: () => record.error }),
     end: ({ child }) => { endBrowser(child); },
     waitForExit: ({ exited }) => Promise.race([exited, sleep(10_000)]),
   });
 }
+
 // ---- the DevTools protocol, over Node's own WebSocket -----------------------------------------------------------
 
 class Devtools {
@@ -126,10 +124,11 @@ class Devtools {
 
   static async connect(endpoint) {
     const tools = new Devtools(new WebSocket(endpoint));
-    await new Promise((done, fail) => {
+    const opened = new Promise((done, fail) => {
       tools.#socket.onopen = done;
       tools.#socket.onerror = () => { fail(new EnvironmentError('the DevTools socket would not open.')); };
     });
+    await withTimeout(opened, CONNECT_MS, 'the DevTools socket opening', () => { tools.close(); });
 
     return tools;
   }
@@ -155,9 +154,14 @@ class Devtools {
 
   send(method, params = {}, sessionId = undefined) {
     const id = this.#next++;
+    const answered = new Promise((ok, fail) => { this.#waiting.set(id, { ok, fail }); });
     this.#socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
 
-    return new Promise((ok, fail) => { this.#waiting.set(id, { ok, fail }); });
+    // A command Chrome never answers must end the run (so the clean-up runs), not hang it: the socket is closed at the ceiling.
+    return withTimeout(answered, COMMAND_MS, `the DevTools command ${method}`, () => {
+      this.#waiting.delete(id);
+      this.close();
+    });
   }
 
   /** Waits for ONE event of `method` in `sessionId`; register it BEFORE the call that causes it. */
@@ -244,7 +248,7 @@ async function writePage(name, css) {
 // ---- one check --------------------------------------------------------------------------------------------------
 
 /** Every width x theme x size over one page; answers the findings as `{ where, state, what }`. */
-async function checkPage(tools, page, url) {
+async function checkPage(tools, page, url, progress = () => undefined) {
   const findings = [];
   let cases = [];
   let states = 0;
@@ -258,9 +262,11 @@ async function checkPage(tools, page, url) {
         states += 1;
         const report = JSON.parse(await evaluate(tools, page, `window.__kitLayout.apply(${JSON.stringify(themeClass)}, ${JSON.stringify(sizeClass)})`));
         const state = `${width}px ${theme} ${size}`;
+        const before = findings.length;
         report.page.forEach((what) => findings.push({ where: 'the page', state, what }));
         report.sections.forEach((section) => section.problems.forEach((what) => findings.push({ where: section.where, state, what })));
         [...report.errors, ...page.exceptions].forEach((what) => findings.push({ where: 'the page script', state, what }));
+        progress(state, findings.length - before);
       }
     }
   }
@@ -287,7 +293,7 @@ function sha256(file) {
 async function runCheck(tools) {
   const page = await openPage(tools);
   const url = await writePage('real', readFileSync(COMPONENTS_CSS, 'utf8'));
-  const { findings, cases, states } = await checkPage(tools, page, url);
+  const { findings, cases, states } = await checkPage(tools, page, url, (state, found) => { console.log(`layout-check: ${state} - ${found === 0 ? 'fits' : `${found} finding(s)`}`); });
   console.log(`layout-check: ${cases.length} case renders (${cases.length / 2} cases x in the page and in an 18em box) x ${WIDTHS.length} widths x ${THEMES.length} themes x ${SIZES.length} sizes = ${cases.length * states} case-states in ${states} page states.`);
   if (findings.length === 0) {
     console.log('layout-check: ok - nothing scrolls sideways, spills or is wider than its box.');
@@ -332,7 +338,7 @@ async function withBrowser(run) {
     tools = await Devtools.connect(started.endpoint);
 
     return run(tools);
-  }, { stop: () => shutDown(tools, started), remove: removeProfile, warn: warnNotRemoved });
+  }, { stop: () => shutDown(tools, started), remove: removeProfile, warn: warnNotCleaned });
 }
 
 /**
@@ -345,10 +351,16 @@ function removeProfile() {
   return removeWithRetry(() => { rmSync(PROFILE, { recursive: true, force: true }); }, { attempts: 240, pauseMs: 500, sleep });
 }
 
-/** A folder that stays busy is reported, never thrown: the check's own result - its error or its pass - stands. */
-function warnNotRemoved(error) {
+/** A browser that will not end cleanly, or a folder that stays busy, is reported and never thrown: the check's own result - its error or its pass - stands. */
+function warnNotCleaned(error, what) {
+  if (what === 'stop') {
+    console.error(`layout-check: could not end the browser cleanly (${error.message}) — the check's own result stands`);
+
+    return;
+  }
   console.error(`layout-check: could not remove ${PROFILE} after two minutes (${error.message}) — the check's own result stands; delete the folder by hand`);
 }
+
 /**
  * Ends the process this script started, and what it started, by its PID - never by image name. The profile is throwaway,
  * so there is nothing to close politely: on Windows `taskkill /T` ends the tree of that one PID while its parent is

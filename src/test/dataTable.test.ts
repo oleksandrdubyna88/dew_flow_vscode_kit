@@ -5,6 +5,7 @@ import { createDataTable, type DataTableOptions } from '../components/dataTable'
 import type { KitElement } from '../components/dom';
 import { compareCells, matchesQuery, sortedIndexes } from '../components/tableOrder';
 import { onEveryDocument, type DomNode, type Driver } from './domDrivers';
+import { GALLERY } from './gallery';
 
 /**
  * `DataTable`, RUN on the strict fake and on jsdom (`todo/PLAN_kit_components_storybook.md` §5.2, items 7–13): the
@@ -171,7 +172,8 @@ onEveryDocument(<E extends KitElement<E>>(make: () => Driver<E>, name: string) =
       const view = createDataTable(driver.doc, options());
       const root = driver.attach(view.root);
       view.sortBy('program', 'descending');
-      view.reveal(2, ROWS[2]?.secret ?? '');
+      driver.click(root.one('tr[data-kit-row="2"]').one('button[data-kit-reveal]'));
+      assert.equal(view.reveal(2, ROWS[2]?.secret ?? ''), true);
       const holding = root.all('tr.kit-table__row').filter((row) => row.text.includes('SECRET'));
       assert.equal(holding.length, 1);
       assert.equal(holding[0]?.attribute('data-kit-row'), '2');
@@ -184,6 +186,62 @@ onEveryDocument(<E extends KitElement<E>>(make: () => Driver<E>, name: string) =
       assert.deepEqual(programs(root), ['node2', 'dotnet2', 'claude2', 'Bash2']);
     });
 
+
+    /** A person asks to reveal row `index` of the rows the consumer gave. */
+    function ask(driver: Driver<E>, root: DomNode, index: number): void {
+      driver.click(root.one(`tr[data-kit-row="${index}"]`).one('button[data-kit-reveal]'));
+    }
+
+    test('reveal(index, text) applies only to a row a person ASKED for in the current rows: no click, or a click before setRows, answers false and changes nothing', () => {
+      const driver = make();
+      const view = createDataTable(driver.doc, options());
+      const root = driver.attach(view.root);
+      assert.equal(view.reveal(1, 'SECRET-unasked'), false, 'a reveal nobody asked for was applied');
+      assert.ok(!root.text.includes('SECRET'), 'an unasked reveal reached the DOM');
+      ask(driver, root, 3);
+      view.setRows(ROWS.map((row) => ({ ...row, program: `${row.program}2` })));
+      assert.equal(view.reveal(3, 'SECRET-late-reply'), false, 'a late reply landed on a NEW row 3');
+      assert.ok(!root.text.includes('SECRET'), 'the old row 3\'s secret is on the new row 3');
+      assert.equal(root.all('button[data-kit-reveal]').length, 4, 'a refused reveal replaced a button');
+      ask(driver, root, 3);
+      assert.equal(view.reveal(3, 'SECRET-answered'), true);
+      assert.equal(root.all('tr.kit-table__row').filter((row) => row.text.includes('SECRET-answered')).length, 1);
+      assert.equal(view.reveal(3, 'SECRET-twice'), false, 'one click answered twice');
+      assert.ok(!root.text.includes('SECRET-twice'));
+    });
+
+    test('a revealed value is searchable, and setRows drops it from the search with the rest of it', () => {
+      const driver = make();
+      const view = createDataTable(driver.doc, options());
+      const root = driver.attach(view.root);
+      ask(driver, root, 2);
+      view.filter('ccc');
+      assert.deepEqual(view.order(), [], 'the hidden value was searchable before it was revealed');
+      view.reveal(2, ROWS[2]?.secret ?? '');
+      assert.deepEqual(view.order(), [2], 'the revealed value is not searched');
+      assert.deepEqual(programs(root), ['dotnet']);
+      view.setRows(ROWS);
+      assert.deepEqual(view.order(), [], 'setRows kept the revealed text in the search');
+    });
+
+    test('the gallery\'s "revealed" case really shows its revealed text - a press, then the consumer\'s reply - on this document too', () => {
+      const driver = make();
+      const entry = GALLERY.find((component) => component.id === 'dataTable')?.cases.find((candidate) => candidate.id === 'revealed') ?? assert.fail('no gallery case dataTable/revealed');
+      assert.equal(entry.kind, 'dom');
+      const root = driver.attach(entry.kind === 'dom' ? entry.render(driver.doc) : assert.fail('not a DOM case'));
+      assert.equal(root.all('td.kit-table__reveal--shown').length, 1, 'no revealed cell: the case\'s press did not reach the table');
+      assert.ok(root.text.includes('charlie --detail=shown-only-on-request'));
+      assert.equal(root.all('button[data-kit-reveal]').length, 3, 'the other three rows keep their buttons');
+    });
+    test('filter(query) refuses a non-string naming the type; the search box still passes its string', () => {
+      const driver = make();
+      const view = createDataTable(driver.doc, options());
+      const root = driver.attach(view.root);
+      assert.throws(() => { view.filter(5 as never); }, (error: unknown) => error instanceof TypeError && /DataTable filter: the query must be a string, got number/.test(error.message));
+      assert.throws(() => { view.filter(undefined as never); }, /the query must be a string, got undefined/);
+      driver.type(root.one('input[type="search"]'), 'node');
+      assert.deepEqual(view.order(), [0]);
+    });
     /** Each shown-or-hidden body row's cells' labels, row by row. */
     function labels(root: DomNode): (string | null)[][] {
       return root.all('tr.kit-table__row').map((row) => row.all('td').map((cell) => cell.attribute('data-kit-label')));
@@ -198,7 +256,8 @@ onEveryDocument(<E extends KitElement<E>>(make: () => Driver<E>, name: string) =
       view.sortBy('program', 'descending');
       view.filter('o');
       view.setRows([...ROWS, { pid: 1, program: 'zsh', held: 5, secret: 'SECRET-zsh' }]);
-      view.reveal(0, 'shown only now');
+      driver.click(root.one('tr[data-kit-row="0"]').one('button[data-kit-reveal]'));
+      assert.equal(view.reveal(0, 'shown only now'), true);
       assert.deepEqual(labels(root), [...ROWS, ROWS[0]].map(() => expected));
       view.filter('zzz');
       assert.equal(root.one('tr.kit-table__empty').one('td').attribute('data-kit-label'), null, 'the empty row must show no label');

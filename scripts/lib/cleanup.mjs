@@ -21,45 +21,115 @@ function lines(portFile, read) {
     return { lines: [], unreadable: error?.code ?? String(error?.message ?? error) };
   }
 }
+
+/** A DevTools port is 1-65535, digits only. */
+const validPort = (port) => /^\d{1,5}$/.test(port) && Number(port) >= 1 && Number(port) <= 65_535;
+
+/** The DevTools browser path: under `/devtools/`, no query, no fragment, no whitespace - nothing a URL could be bent with. */
+const validPath = (path) => path.startsWith('/devtools/') && !/[?#\s]/.test(path);
+
+/** What the port file holds, as its first two lines; `valid` says whether they are a DevTools endpoint. */
+function endpointIn(seen) {
+  const [port = '', path = ''] = seen.map((line) => line.trim());
+  if (port === '' && path === '') {
+    return { valid: false, held: '' };
+  }
+
+  return { valid: validPort(port) && validPath(path), held: `${port} ${path}`.trim(), url: `ws://127.0.0.1:${port}${path}` };
+}
+
 /**
  * The DevTools endpoint a started Chrome writes to `<profile>/DevToolsActivePort`, polled every `pollMs` for at most
- * `waitMs`. Throws `EnvironmentError` when Chrome exits first or the port never appears. A port file that is STILL
- * unreadable at the deadline is named in that error, so a file that never becomes readable is not mistaken for a
- * browser that never wrote one: the wait stays bounded either way.
+ * `waitMs`. Throws `EnvironmentError` when Chrome exits first, when it could not be started at all (`startError()` answers
+ * the spawn's error: the wait rejects at the next poll, not at the deadline), or when no endpoint appears. A port file that
+ * is STILL unreadable at the deadline, or holds something that is not a DevTools endpoint (a port outside 1-65535, a path
+ * outside `/devtools/` or carrying `?`, `#` or whitespace), is named in that error: the wait stays bounded either way, and
+ * a file that never becomes right is not mistaken for a browser that never wrote one.
  */
-export async function endpointOf(child, { portFile, waitMs, pollMs = 100, read = (file) => readFileSync(file, 'utf8') }) {
+export async function endpointOf(child, { portFile, waitMs, pollMs = 100, read = (file) => readFileSync(file, 'utf8'), startError = () => undefined }) {
   let unreadable = '';
+  let invalid = '';
   for (let waited = 0; waited < waitMs; waited += pollMs) {
     await sleep(pollMs);
+    const failure = startError();
+    if (failure !== undefined) {
+      throw new EnvironmentError(`could not start Chrome: ${failure.message}`);
+    }
     if (child.exitCode !== null) {
       throw new EnvironmentError(`Chrome exited with code ${child.exitCode} before it opened its DevTools port.`);
     }
     const seen = lines(portFile, read);
     unreadable = seen.unreadable;
-    const [port, path] = seen.lines;
-    if (port && path) {
-      return `ws://127.0.0.1:${port.trim()}${path.trim()}`;
+    const found = endpointIn(seen.lines);
+    if (found.valid) {
+      return found.url;
     }
+    invalid = found.held;
   }
   const why = unreadable === '' ? '' : ` (its port file ${portFile} exists but could not be read: ${unreadable})`;
-  throw new EnvironmentError(`Chrome did not open its DevTools port within ${waitMs / 1000} s${why}.`);
+  const bad = invalid === '' ? '' : ` (its port file ${portFile} holds something that is not a DevTools endpoint: ${invalid})`;
+  throw new EnvironmentError(`Chrome did not open its DevTools port within ${waitMs / 1000} s${why}${bad}.`);
+}
+
+/**
+ * Starts the browser process through `spawnProcess` and watches it: `exited` settles when it exits OR when it could not be
+ * started, and `record.error` keeps a spawn error (ENOENT, EACCES) instead of swallowing it, for `endpointOf`'s `startError`.
+ */
+export function spawnBrowser(spawnProcess, chrome, args) {
+  const child = spawnProcess(chrome, args, { stdio: 'ignore' });
+  const record = { error: undefined };
+  const exited = new Promise((done) => {
+    child.once('exit', done);
+    child.once('error', (error) => {
+      record.error = error;
+      done();
+    });
+  });
+
+  return { child, exited, record };
+}
+
+/** Runs one clean-up step; a throw is handed to `warn` and swallowed, so a step never replaces what the caller is about to answer. */
+async function settle(step, warn) {
+  try {
+    await step();
+  } catch (error) {
+    warn(error);
+  }
 }
 
 /**
  * Starts a browser and waits for its endpoint. When the wait fails, the browser is a process nobody else holds a handle
  * to - the caller never receives `started`, so its own shutdown cannot reach it - so it is ended HERE, by the handle
  * `spawnChild` returned (`end`), its exit awaited (`waitForExit`, bounded by the caller), and the ORIGINAL error rethrown.
+ * A clean-up step that itself throws is reported through `warn` and never replaces that error.
  */
-export async function startOrEnd({ spawnChild, endpointOf: awaitEndpoint, end, waitForExit }) {
+export async function startOrEnd({ spawnChild, endpointOf: awaitEndpoint, end, waitForExit, warn = (error) => { console.error(`layout-check: could not end the browser cleanly (${error.message})`); } }) {
   const started = spawnChild();
   try {
     return { ...started, endpoint: await awaitEndpoint(started) };
   } catch (error) {
-    end(started);
-    await waitForExit(started);
+    await settle(() => end(started), warn);
+    await settle(() => waitForExit(started), warn);
 
     throw error;
   }
+}
+
+/**
+ * Answers what `promise` answers, or rejects with an `EnvironmentError` saying that `what` did not answer within `ms`,
+ * running `onTimeout` first (close the socket, so the caller's clean-up can run). The timer never outlives the promise.
+ */
+export function withTimeout(promise, ms, what, onTimeout = () => undefined) {
+  let timer;
+  const timedOut = new Promise((_ok, fail) => {
+    timer = setTimeout(() => {
+      onTimeout();
+      fail(new EnvironmentError(`${what} did not answer within ${ms / 1000} s.`));
+    }, ms);
+  });
+
+  return Promise.race([promise, timedOut]).finally(() => { clearTimeout(timer); });
 }
 
 /**
@@ -81,19 +151,15 @@ export async function removeWithRetry(remove, { attempts, pauseMs, sleep: pause 
 }
 
 /**
- * Runs `run`, then ALWAYS `stop` and `remove`, and answers what `run` answered or throws what `run` threw. A removal that
- * fails is only reported through `warn`: tidying a throwaway folder must never replace a check's own result - a failed
- * check keeps its error, a passed check is not turned into a failure by a busy, git-ignored folder.
+ * Runs `run`, then ALWAYS `stop` and `remove`, and answers what `run` answered or throws what `run` threw. A `stop` or a
+ * removal that fails is only reported through `warn(error, 'stop' | 'remove')`: tidying up must never replace a check's own
+ * result - a failed check keeps its error, a passed check is not turned into a failure by a busy, git-ignored folder.
  */
 export async function runThenRemove(run, { stop, remove, warn }) {
   try {
     return await run();
   } finally {
-    await stop();
-    try {
-      await remove();
-    } catch (error) {
-      warn(error);
-    }
+    await settle(stop, (error) => { warn(error, 'stop'); });
+    await settle(remove, (error) => { warn(error, 'remove'); });
   }
 }

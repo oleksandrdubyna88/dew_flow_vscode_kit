@@ -127,7 +127,7 @@ test('an unknown argument is a usage error, exit 2, before any browser is looked
 const CLEANUP = pathToFileURL(path.join(ROOT, 'scripts', 'lib', 'cleanup.mjs')).href;
 
 function inChild(body: string): void {
-  const code = ['import assert from "node:assert/strict";', 'const { EnvironmentError, endpointOf, removeWithRetry, runThenRemove, startOrEnd } = await import(process.env.KIT_LIB);', body].join('\n');
+  const code = ['import assert from "node:assert/strict";', 'const { EnvironmentError, endpointOf, removeWithRetry, runThenRemove, spawnBrowser, startOrEnd, withTimeout } = await import(process.env.KIT_LIB);', body].join('\n');
   const ran = spawnSync(process.execPath, ['--input-type=module', '-e', code], { encoding: 'utf8', timeout: 30_000, env: { ...process.env, KIT_LIB: CLEANUP, KIT_PORT_FILE: path.join(os.tmpdir(), 'kit-no-such-port-file') } });
   assert.equal(ran.error, undefined, `could not run: ${String(ran.error)}`);
   assert.equal(ran.status, 0, `${ran.stdout}${ran.stderr}`);
@@ -252,5 +252,79 @@ test('a port file that NEVER becomes readable still ends in the bounded port tim
       });
       assert.ok(reads > 1, 'the unreadable file was not polled more than once');
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  `);
+});
+
+test('stop() throwing never replaces the run\'s error - it is reported, and the removal still runs', () => {
+  inChild(`
+    const warned = []; const order = [];
+    await assert.rejects(runThenRemove(async () => { throw new Error('A: the check broke'); },
+      { stop: async () => { order.push('stop'); throw new Error('B: stop failed'); }, remove: async () => { order.push('remove'); }, warn: (error) => warned.push(error.message) }),
+      { message: 'A: the check broke' });
+    assert.deepEqual(warned, ['B: stop failed']); assert.deepEqual(order, ['stop', 'remove']);
+  `);
+});
+
+test('stop() throwing after a PASSING run leaves it passing, with the warning, and the removal still runs', () => {
+  inChild(`
+    const warned = []; const order = [];
+    const outcome = await runThenRemove(async () => 0,
+      { stop: async () => { order.push('stop'); throw new Error('B: stop failed'); }, remove: async () => { order.push('remove'); }, warn: (error) => warned.push(error.message) });
+    assert.equal(outcome, 0); assert.deepEqual(warned, ['B: stop failed']); assert.deepEqual(order, ['stop', 'remove']);
+  `);
+});
+
+test('startOrEnd: an end() or waitForExit() that throws never replaces the original error - it is reported through warn', () => {
+  inChild(`
+    const warned = [];
+    const base = { spawnChild: () => ({ child: {} }), endpointOf: async () => { throw new EnvironmentError('the port never opened'); } };
+    await assert.rejects(startOrEnd({ ...base, end: () => { throw new Error('taskkill missing'); }, waitForExit: async () => undefined, warn: (error) => warned.push(error.message) }), { message: 'the port never opened' });
+    await assert.rejects(startOrEnd({ ...base, end: () => undefined, waitForExit: async () => { throw new Error('wait broke'); }, warn: (error) => warned.push(error.message) }), { message: 'the port never opened' });
+    assert.deepEqual(warned, ['taskkill missing', 'wait broke']);
+  `);
+});
+
+test('a spawn that fails (ENOENT) is not swallowed: the wait rejects at once with "could not start Chrome: <message>", and the child is ended', () => {
+  inChild(`
+    const { EventEmitter } = await import('node:events');
+    const ended = [];
+    const fake = new EventEmitter(); fake.exitCode = null;
+    const spawnProcess = () => { setImmediate(() => fake.emit('error', new Error('spawn chrome ENOENT'))); return fake; };
+    const started = Date.now();
+    const failure = await startOrEnd({
+      spawnChild: () => spawnBrowser(spawnProcess, 'chrome', []),
+      endpointOf: (s) => endpointOf(s.child, { portFile: process.env.KIT_PORT_FILE, waitMs: 60_000, pollMs: 5, startError: () => s.record.error }),
+      end: (s) => { ended.push(s.child === fake); }, waitForExit: (s) => s.exited,
+    }).then(() => assert.fail('it started'), (error) => error);
+    assert.ok(failure instanceof EnvironmentError); assert.equal(failure.message, 'could not start Chrome: spawn chrome ENOENT');
+    assert.ok(Date.now() - started < 5000, 'it waited out the 60 s');
+    assert.deepEqual(ended, [true]);
+  `);
+});
+
+test('a port file that is not a DevTools endpoint never yields one, and the timeout error says what it held', () => {
+  inChild(`
+    const fs = await import('node:fs'); const os = await import('node:os'); const path = await import('node:path');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-badport-'));
+    try {
+      for (const [content, why] of [['9222\\n/?token=x\\n', '/?token=x'], ['99999\\n/devtools/browser/a\\n', '99999'], ['92x2\\n/devtools/browser/a\\n', '92x2'], ['9222\\n/devtools/browser/a b\\n', 'a b'], ['0\\n/devtools/browser/a\\n', '0'], ['9222\\n/devtools/browser/a#frag\\n', 'a#frag']]) {
+        const portFile = path.join(dir, 'DevToolsActivePort'); fs.writeFileSync(portFile, content);
+        const failure = await endpointOf({ exitCode: null }, { portFile, waitMs: 40, pollMs: 5 }).then((url) => assert.fail('built ' + url), (error) => error);
+        assert.match(failure.message, /did not open its DevTools port/); assert.ok(failure.message.includes('not a DevTools endpoint'), failure.message); assert.ok(failure.message.includes(why), failure.message);
+      }
+      fs.writeFileSync(path.join(dir, 'ok'), '65535\\n/devtools/browser/abc-1\\n');
+      assert.equal(await endpointOf({ exitCode: null }, { portFile: path.join(dir, 'ok'), waitMs: 1000, pollMs: 5 }), 'ws://127.0.0.1:65535/devtools/browser/abc-1');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  `);
+});
+
+test('withTimeout: answers what the promise answered, rejects with an EnvironmentError NAMING what timed out, and runs the clean-up hook on the timeout only', () => {
+  inChild(`
+    let closed = 0;
+    assert.equal(await withTimeout(Promise.resolve('fine'), 1000, 'the DevTools command Foo.bar', () => { closed += 1; }), 'fine');
+    await assert.rejects(withTimeout(Promise.reject(new Error('its own')), 1000, 'x', () => { closed += 1; }), { message: 'its own' });
+    assert.equal(closed, 0);
+    const failure = await withTimeout(new Promise(() => undefined), 30, 'the DevTools command Foo.bar', () => { closed += 1; }).then(() => assert.fail('answered'), (error) => error);
+    assert.ok(failure instanceof EnvironmentError); assert.match(failure.message, /the DevTools command Foo\\.bar did not answer within 0\\.03 s/); assert.equal(closed, 1);
   `);
 });

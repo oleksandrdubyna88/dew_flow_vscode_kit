@@ -11,6 +11,8 @@ import { digestOf } from '../../help/digest';
 import { renderHelpPage } from '../../help/page';
 import type { HelpArticle, HelpBody, HelpLanguage } from '../../help/types';
 
+import { spyOn } from './spy';
+
 /**
  * THE GALLERY — every component × state, once (`todo/PLAN_kit_components_storybook.md` §4.9). One source of truth
  * read three ways: the Storybook shows each case as a story (`stories/*.stories.ts`, held equal to this list by
@@ -147,10 +149,14 @@ const TABLE: readonly GalleryCase[] = [
     },
   },
   {
+    // A reveal is the answer to a request: a person presses the row's button, the consumer replies. The spy document lets the
+    // case press it before there is a page to dispatch in; a reply with no press is refused (`reveal` answers false).
     kind: 'dom', id: 'revealed', title: 'One row revealed', render: (doc) => {
-      const view = createDataTable(doc, tableOptions());
-      view.reveal(2, 'charlie --detail=shown-only-on-request');
-      return view.root;
+      const spy = spyOn(doc);
+      const reveal = { header: 'Detail', button: (row: Sample) => `Show the detail of ${row.name}`, onReveal: (index: number) => { view.reveal(index, 'charlie --detail=shown-only-on-request'); } };
+      const view = createDataTable(spy.doc, tableOptions({ reveal }));
+      spy.press('data-kit-reveal', '2');
+      return spy.unwrap(view.root);
     },
   },
   { kind: 'dom', id: 'plain', title: 'No search, no reveal', render: (doc) => createDataTable(doc, { label: 'Samples', columns: tableOptions().columns, rows: SAMPLES }).root },

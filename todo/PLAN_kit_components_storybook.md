@@ -202,7 +202,7 @@ createDataTable(doc, {
   reveal: { header: 'Command line', button: (row) => `Show the command line of ${row.program}`, onReveal: (index) => post({ type: 'reveal', index }) }, // optional
   emptyText: 'No process matches.',                  // optional, English default
   sort: { key: 'held', direction: 'descending' },    // optional initial sort
-}) → { root, setRows(rows), reveal(index, text), sortBy(key, direction), filter(query), order() }
+}) → { root, setRows(rows), reveal(index, text) → boolean, sortBy(key, direction), filter(query), order() }
 ```
 
 - **Values and formats are the consumer's.** `value(row)` is `string | number | null` and is what sorts;
@@ -225,11 +225,15 @@ createDataTable(doc, {
   column holds, per row, a `button type=button` with the consumer's `button(row)` text as its `aria-label` and
   `Show` as its text; a click calls `onReveal(index)` with ONE argument, the row's index in the `rows` the
   consumer gave (not its position after a sort or a search). The kit never receives the hidden text until the
-  consumer calls `reveal(index, text)`, which replaces THAT row's button with the text. `setRows` drops every
-  revealed text — a new row at index 3 never shows the old row 3's secret.
+  consumer calls `reveal(index, text)`, which replaces THAT row's button with the text and answers `true`. **A reveal
+  is the answer to a request** (code round, 2026-10-18): a click records the row index as pending in the CURRENT rows;
+  `reveal(index, text)` applies only to a pending index and clears it, and otherwise answers `false` and changes nothing
+  (no throw: a slow host reply must not crash the page). `setRows` drops every revealed text AND every pending request —
+  a late reply for the old row 3 never lands on the new row 3. A revealed text is searchable like any shown text, until
+  `setRows` drops it.
 - Refused with a `TypeError`: no columns, a repeated or malformed key, an empty header or label, a
   `sort.key` that is not a sortable column, `reveal(index, …)` outside the rows or without a reveal column, a
-  non-string revealed text.
+  non-string revealed text, a `filter(query)` whose query is not a string.
 
 ### 4.6a `DataTable` fits its box — never a horizontal scroll (the owner, 2026-10-15)
 
@@ -634,3 +638,28 @@ stylesheet before 4.6a: `the page scrolls sideways: 363px of 300px`).
   import fails `pack-and-consume` at `bundle` (*the webview bundle emitted no dist/webview.css*); `REQUIRED` back to the two
   root files fails it at `contents` (*dist/ in the tarball holds more than .js, .d.ts and the files exports names:
   dist/components/components.css*).
+**Code round, 2026-10-18 (coai a184ab9f) — the twelve accepted fixes, as built.**
+
+1. `runThenRemove`: a throwing `stop()` is reported, never replaces the run's error; the removal still runs.
+2. `startOrEnd`: a throwing `end()` or `waitForExit()` is reported through `warn` and the ORIGINAL error is rethrown.
+3. A spawn error (ENOENT) is no longer swallowed: `endpointOf` rejects at the next poll as `could not start Chrome: <message>`, and `startOrEnd` ends and cleans (`spawnBrowser` records it).
+4. The port file is validated before a URL is built (port 1-65535 digits only; path under `/devtools/`, no `?`, `#` or whitespace); anything else is "not yet" and is named in the timeout error.
+5. The DevTools socket has ceilings (`withTimeout`: 30 s to open, 60 s per command); on a timeout the socket is closed so the clean-up runs.
+6. One progress line per checked state (`layout-check: 300px dark small - fits`); the final verdict lines are unchanged.
+7. `copy-css.mjs`: the two failures have distinct messages (pinned by `copyCss.test.ts`).
+8. `copy-css.mjs` refuses a source outside `<root>/src` and a destination outside `<root>/dist` (a `..` in an `exports` target) with its own message.
+9. `filter(query)`: a non-string is a `TypeError` naming the type; the search box still passes its string.
+10. The ordered rows are computed once per repaint (`paint` passes its order on; `visible` is gone).
+11. A revealed text is searchable; `setRows` drops it.
+12. `reveal(index, text) → boolean`: a click records a PENDING request in the current rows; `reveal` applies only to a pending index and clears it, otherwise it answers `false` and changes nothing (no throw); `setRows` clears pending. A late reply can no longer land on a new row. The gallery's `revealed` case now presses the button through a spy document (`src/test/gallery/spy.ts`), because a reply without a press is refused.
+**The gate's code round (session `a184ab9f`, 2026-10-18).** Verdict `proceed`, gating 12 of threshold 5; **12 of 16
+reviewers answered** (all four kimi roles failed). The cadence consultation it required (2b97fd01) closed `solved`.
+Accepted and built (the twelve items above): `stop()` and `end()`/`waitForExit()` never replace the original error; a spawn
+error fails the endpoint wait at once; the DevTools port file is validated; the DevTools waits have ceilings; progress
+lines; copy-css's distinct messages and containment; `filter` refuses a non-string; one ordering pass per repaint; a
+revealed text is searchable; a late reveal can no longer land on a new row. Rejected with reasons: tone/CSS drift (the
+derived class-rule scan over every tone already fails the build), the DOM-port whitelist (the design, §4.3), a constants
+file for the English defaults (all overridable), a search debounce and virtualization (the consumers' tables are small;
+§4.6a lays every row out), immutability of the component's internal state (it never escapes), a POST_DEPLOY item for the
+components (item 5's `pack-and-consume --published` already imports both subpaths from the published tarball), and a
+concrete version in POST_DEPLOY's instruction (the stamp stays concrete).

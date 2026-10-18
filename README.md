@@ -431,7 +431,7 @@ setup at the end of this section.
    `read:packages` (`gh auth refresh -s read:packages`):
 
    ```bash
-   node .agents/conventions/tools/post-deploy-check.mjs --target 0.1.1 --timeout 300000
+   node .agents/conventions/tools/post-deploy-check.mjs --target <version> --timeout 300000
    ```
 
 The scripts' npm (`scripts/lib/npm.mjs`, `registryEnv`) is pinned: it refuses any registry but

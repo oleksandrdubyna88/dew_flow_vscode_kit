@@ -24,7 +24,7 @@
  * lives in `testsToDelete-layout-check/` (git-ignored) and is removed in a `finally`; only the process this script
  * started is ever killed, through its own handle - never by image name.
  */
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -32,6 +32,8 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { build } from 'esbuild';
+
+import { removeWithRetry, runThenRemove } from './lib/cleanup.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PROFILE = join(ROOT, 'testsToDelete-layout-check');
@@ -334,27 +336,48 @@ async function withBrowser(run) {
   mkdirSync(PROFILE, { recursive: true });
   let started;
   let tools;
-  try {
+
+  return runThenRemove(async () => {
     started = await launch(findChrome());
     tools = await Devtools.connect(started.endpoint);
 
-    return await run(tools);
-  } finally {
-    await shutDown(tools, started);
-    rmSync(PROFILE, { recursive: true, force: true, maxRetries: 60, retryDelay: 500 });
-  }
+    return run(tools);
+  }, { stop: () => shutDown(tools, started), remove: removeProfile, warn: warnNotRemoved });
 }
 
-/** Closes the browser politely, then ends the one process this script started - by its handle, never by name. */
+/**
+ * Removes the profile folder, retrying for two minutes (240 x 500 ms, bounded). Chrome's helpers (the crash handler above
+ * all) take up to 40 s to finish ending after the kill on a loaded Windows machine (measured), and until the last one is
+ * gone the folder is busy (EPERM). `rmSync`'s own `maxRetries` does NOT help: Node 24 on Windows threw EPERM after 3 ms with
+ * `maxRetries: 240` set (measured), so the retry is `removeWithRetry`'s (`scripts/lib/cleanup.mjs`, unit-tested).
+ */
+function removeProfile() {
+  return removeWithRetry(() => { rmSync(PROFILE, { recursive: true, force: true }); }, { attempts: 240, pauseMs: 500, sleep });
+}
+
+/** A folder that stays busy is reported, never thrown: the check's own result - its error or its pass - stands. */
+function warnNotRemoved(error) {
+  console.error(`layout-check: could not remove ${PROFILE} after two minutes (${error.message}) — the check's own result stands; delete the folder by hand`);
+}
+/**
+ * Ends the process this script started, and what it started, by its PID - never by image name. The profile is throwaway,
+ * so there is nothing to close politely: on Windows `taskkill /T` ends the tree of that one PID while its parent is
+ * still alive, elsewhere the process is signalled through its handle.
+ */
+function endBrowser(child) {
+  if (process.platform === 'win32') {
+    spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore', timeout: 30_000 });
+
+    return;
+  }
+  child.kill();
+}
+
 async function shutDown(tools, started) {
-  await Promise.race([tools?.send('Browser.close').catch(() => undefined), sleep(5_000)]);
   tools?.close();
-  if (started !== undefined) {
+  if (started !== undefined && started.child.exitCode === null) {
+    endBrowser(started.child);
     await Promise.race([started.exited, sleep(10_000)]);
-    if (started.child.exitCode === null) {
-      started.child.kill();
-      await Promise.race([started.exited, sleep(10_000)]);
-    }
   }
 }
 

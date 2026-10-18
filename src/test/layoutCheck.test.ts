@@ -4,6 +4,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { test } from 'node:test';
+import { pathToFileURL } from 'node:url';
 
 import { FakeDocument } from './fakeDom';
 import { GALLERY } from './gallery';
@@ -115,4 +116,64 @@ test('an unknown argument is a usage error, exit 2, before any browser is looked
 
   assert.equal(status, 2, said);
   assert.match(said, /usage: node scripts\/layout-check\.mjs \[--companion\]/);
+});
+
+/**
+ * `scripts/lib/cleanup.mjs` - what the check does AFTER the browser work: retry the removal of the profile folder a
+ * bounded number of times, and never let a failed removal replace the check's own result. An ES module outside the
+ * TypeScript program, so each case runs its body in a `node --input-type=module` child with the library imported; a body
+ * that throws is a failed case, and its message is what the test prints.
+ */
+const CLEANUP = pathToFileURL(path.join(ROOT, 'scripts', 'lib', 'cleanup.mjs')).href;
+
+function inChild(body: string): void {
+  const code = ['import assert from "node:assert/strict";', 'const { removeWithRetry, runThenRemove } = await import(process.env.KIT_LIB);', body].join('\n');
+  const ran = spawnSync(process.execPath, ['--input-type=module', '-e', code], { encoding: 'utf8', timeout: 30_000, env: { ...process.env, KIT_LIB: CLEANUP } });
+  assert.equal(ran.error, undefined, `could not run: ${String(ran.error)}`);
+  assert.equal(ran.status, 0, `${ran.stdout}${ran.stderr}`);
+}
+
+test('removeWithRetry: a removal that fails N times and then works resolves, after exactly N+1 calls and N pauses', () => {
+  inChild(`
+    let calls = 0; const pauses = [];
+    const answer = await removeWithRetry(() => { calls += 1; if (calls <= 3) { throw new Error('busy ' + calls); } return 'gone'; },
+      { attempts: 10, pauseMs: 500, sleep: async (ms) => { pauses.push(ms); } });
+    assert.equal(answer, 'gone'); assert.equal(calls, 4); assert.deepEqual(pauses, [500, 500, 500]);
+  `);
+});
+
+test('removeWithRetry is bounded: a removal that always fails is called exactly `attempts` times, pauses between them only, and the LAST error is thrown', () => {
+  inChild(`
+    let calls = 0; let pauses = 0;
+    await assert.rejects(removeWithRetry(() => { calls += 1; throw new Error('busy ' + calls); },
+      { attempts: 240, pauseMs: 500, sleep: async () => { pauses += 1; } }), { message: 'busy 240' });
+    assert.equal(calls, 240); assert.equal(pauses, 239);
+  `);
+});
+
+test('a failing removal after a PASSING run leaves the run passing - the warning is the only trace', () => {
+  inChild(`
+    const warned = []; const order = [];
+    const outcome = await runThenRemove(async () => { order.push('run'); return 0; },
+      { stop: async () => { order.push('stop'); }, remove: async () => { order.push('remove'); throw new Error('EPERM busy'); }, warn: (error) => warned.push(error.message) });
+    assert.equal(outcome, 0); assert.deepEqual(warned, ['EPERM busy']); assert.deepEqual(order, ['run', 'stop', 'remove']);
+  `);
+});
+
+test('a failing removal after a FAILING run rethrows the RUN\'s error, not the removal\'s - and a failed run still stops and removes', () => {
+  inChild(`
+    const warned = []; const order = [];
+    await assert.rejects(runThenRemove(async () => { order.push('run'); throw new Error('the check broke'); },
+      { stop: async () => { order.push('stop'); }, remove: async () => { order.push('remove'); throw new Error('EPERM busy'); }, warn: (error) => warned.push(error.message) }),
+      { message: 'the check broke' });
+    assert.deepEqual(warned, ['EPERM busy']); assert.deepEqual(order, ['run', 'stop', 'remove']);
+  `);
+});
+
+test('a removal that works is silent: no warning, the run\'s answer unchanged', () => {
+  inChild(`
+    const warned = [];
+    const outcome = await runThenRemove(async () => 1, { stop: async () => undefined, remove: async () => undefined, warn: (error) => warned.push(error.message) });
+    assert.equal(outcome, 1); assert.deepEqual(warned, []);
+  `);
 });

@@ -1,13 +1,13 @@
 # PLAN — kit 0.2.0: Tabs, DataTable, RecommendationCard, theme tokens, and a Storybook
 
-> Status: **in progress, 2026-10-12** — the plan round reached `proceed`; the components, the stylesheet, the Storybook, the axe and contrast checks and the consumer fixture's webview entry are built on `feat/kit-k1-components`; the code round, the pull request and the merge are open. **Amended 2026-10-15** with §4.6a (the owner's review of the E18 mockup: no table ever scrolls sideways), its RED items 25–28 and build step 8a; that part is built on the same branch (2026-10-15, as built in §11). Scope: a new `src/components/` module with its
+> Status: **in progress, 2026-10-18** — built on `feat/kit-k1-components`, rebased onto `main` @ `d8a1e2d` (kit 0.1.1, published to GitHub Packages on 2026-10-17): the components, the stylesheet, the Storybook, the axe and contrast checks, the consumer fixture's webview entry, and §4.6a (the owner's review of the E18 mockup, 2026-10-15: no table ever scrolls sideways — items 25–28, the layout check, as built in §11). **Open:** the code round, the merge, and the 0.2.0 release (release-please's pull request; §7). Plan round `proceed` 2026-10-12. Scope: a new `src/components/` module with its
 > own package entry (`./components`) and stylesheet (`./components.css`), a Storybook (devDependencies only),
 > axe and contrast checks in CI, and the docs. This is story **E18.K1** of wsl_care's epic E18
 > (`wsl_care · todo/PLAN_disk_health.md` §3.4 and its E18 table, issue oleksandrdubyna88/wsl_care#87),
 > started on the owner's go of 2026-10-12.
 >
 > Paired plans: `wsl_care · todo/PLAN_disk_health.md` §3.4 (the same table as §2 below, written there first) and
-> this repository's [PLAN_extract_the_kit.md](PLAN_extract_the_kit.md) (0.1.0), the first step of the order.
+> this repository's [PLAN_extract_the_kit.md](PLAN_extract_the_kit.md) (0.1.0, which never reached a registry; 0.1.1 is the first published version), the first step of the order.
 
 ## 1. Goal
 
@@ -45,7 +45,7 @@ words: every label, unit, number format, sentence and revealed value is the cons
 |---|---|---|
 | `Tabs`, `DataTable`, `RecommendationCard`, theme tokens; the display controls and Help viewer (exist) | the components, their CSS (classes only), their tests, axe checks, the Storybook (every component × state × light / dark / high contrast × three font sizes), release 0.2.0 | nothing of the components — it consumes them |
 | the data shown, the units, the redaction, the reveal, the recommendation's words | nothing (consumer-supplied callbacks and strings) | everything (E18.W1–W3; the daemon makes the words) |
-| the order | 0.1.0 (its E3, [PLAN_extract_the_kit.md](PLAN_extract_the_kit.md)) → K1 (this plan) → 0.2.0 on npmjs | W0 starts only after 0.2.0 is published (or the kit's `pack-and-consume` tarball as a bridge, never committed) |
+| the order | 0.1.1 on GitHub Packages (the first publish; its E3, [PLAN_extract_the_kit.md](PLAN_extract_the_kit.md)) → K1 (this plan) → 0.2.0 on GitHub Packages | W0 starts only after 0.2.0 is published (or the kit's `pack-and-consume` tarball as a bridge, never committed) |
 | disjoint | no wsl_care-specific component, no `vscode` API in the webview components | no copy of a kit component, ever (`common.reuse-first`) |
 
 The table is complete, not a list of examples: anything not in the first column's left cell is wsl_care's.
@@ -100,7 +100,7 @@ are not needed here; `src/test/scriptInterpolation.test.ts` keeps scanning every
 
 | Specifier | File | Holds |
 |---|---|---|
-| `@oleksandrdubyna88/vscode-webview-kit` | `dist/index.js` | unchanged — the 0.1.0 host + page API |
+| `@oleksandrdubyna88/vscode-webview-kit` | `dist/index.js` | unchanged — the 0.1.x host + page API |
 | `…/components` | `dist/components/index.js` (+ `.d.ts`) | `createTabs`, `createDataTable`, `createRecommendationCard`, `STATUS_TONES`, their types |
 | `…/components.css` | `dist/components/components.css` | the theme tokens and every component rule |
 
@@ -233,7 +233,7 @@ createDataTable(doc, {
 
 ### 4.6a `DataTable` fits its box — never a horizontal scroll (the owner, 2026-10-15)
 
-The owner approved the E18 mockup (`D:\rsd\_wt\e18-mockup`, outside every repository) with three changes; one of them
+The owner approved the E18 mockup (a scratch folder outside every repository) with three changes; one of them
 is the kit's: **no table scrolls sideways, small ones above all** — columns shrink and wrap, headers are short, and
 where that is not enough a row breaks onto several lines; a scroll bar is never the answer. (The other two — cards in
 one row of one height, and a distro picker on wsl_care's WSL tab — are the consumer's layout, E18.W1.)
@@ -502,29 +502,38 @@ One reviewer (codex) of one answered; verdict `proceed`, gating count 1 of thres
 10. Docs: `research/architecture.md` (module map, a components section with a Mermaid diagram, the package
     surface), `research/module_tests.md` (the flows, the fakes, what is not proven), README (consumer usage).
 11. Break-its (§5.3), full suites and family checks, commit, the gate's code round, the PR, CodeRabbit,
-    squash-merge (with the release footer of §7 when it applies), and this plan promoted to `research/` in the
+    squash-merge (its commit body carries `Release-As: 0.2.0`, §7), and this plan promoted to `research/` in the
     same pull request once the code round has passed.
 
-## 7. Release: why the first published version is 0.2.0 — decided
+## 7. Release: how K1 becomes 0.2.0 — decided (rewritten 2026-10-18)
 
-As of 2026-10-12: npmjs answers 404 for the package; `.release-please-manifest.json` is `{}` with
-`initial-version: 0.1.0` (`release-please-config.json`); there are no GitHub releases, no Actions secrets and no
-`npm` environment — the owner's one-time setup (README "What the owner creates once") is not done. The epic wants
-wsl_care to pin 0.2.0 = the 0.1.0 modules + K1.
+**What changed since 2026-10-12.** The first draft of this section assumed 0.1.0 would never be released by the time
+K1 merged, and so had K1's squash commit carry `Release-As: 0.2.0` to make 0.2.0 the first published version. History,
+kept because it explains the footer: on 2026-10-12 npmjs answered 404 for the package, `.release-please-manifest.json`
+was `{}` with `initial-version: 0.1.0`, and the owner's one-time npm setup (an `npm` environment holding `NPM_TOKEN`) was
+not done. That route is gone: 0.1.0 was tagged and its publish to npmjs failed (E403), so **0.1.0 never reached any
+registry**; the package now goes to **GitHub Packages** (`publishConfig.registry`, the job's own `GITHUB_TOKEN`, an
+artifact attestation — [research/PLAN_publish_to_github_packages.md](../research/PLAN_publish_to_github_packages.md)) and
+**0.1.1 was published there on 2026-10-17**. There is no npm token and no npmjs setup in the order any more.
 
-- **If 0.1.0 has been released by the time K1 merges** (the owner's setup landed and release-please's 0.1.0
-  pull request merged first): K1 is a plain `feat:` and release-please proposes 0.2.0 by itself.
-- **Otherwise — the expected case:** K1's squash-merge commit body carries the footer `Release-As: 0.2.0`. The
-  first release-please pull request then proposes 0.2.0 holding everything, and **0.1.0 is never published
-  separately**; both kit plans record that. Checked, not recalled: release-please 17.11.2 (npm),
-  `build/src/strategies/base.js:325-340` — `buildNewVersion` takes a commit's `RELEASE AS` note BEFORE it looks
-  for a latest release or falls back to `initial-version`; `build/src/commit.js:221-231` turns the `Release-As:`
-  footer into that note. The action's own bundle (v5.0.0) was not re-read for this.
-- `src/test/releaseConfig.test.ts` stays green either way: until release-please's pull request, the manifest is
-  `{}` and `package.json` still says 0.1.0 = `initial-version`; from that pull request on, the manifest and
-  `package.json` both say 0.2.0 and `CHANGELOG.md` carries its section.
+As of 2026-10-18: `.release-please-manifest.json` is `{".":"0.1.1"}` and `package.json` says `0.1.1`, so release-please
+has a latest release to count from.
+
+- **K1 is a plain `feat:`.** On top of 0.1.1, release-please proposes 0.2.0 by itself: a `feat` bumps the minor, and
+  neither `bump-minor-pre-major` nor `bump-patch-for-minor-pre-major` is set in `release-please-config.json` (so its
+  defaults apply — a `feat` before 1.0 is a minor). The epic wants wsl_care to pin 0.2.0 = the 0.1.x modules + K1.
+- **The squash commit still carries `Release-As: 0.2.0`** — the coordinator's explicit decision, so that 0.2.0 does
+  not depend on how release-please counts a pre-1.0 `feat`. It is harmless when the default already says 0.2.0.
+  Checked, not recalled (release-please 17.11.2 on npm, the same reading as the first draft):
+  `build/src/strategies/base.js:325-340` — `buildNewVersion` takes a commit's `RELEASE AS` note BEFORE the versioning
+  strategy; `build/src/commit.js:221-231` turns the `Release-As:` footer into that note. The action's own bundle
+  (v5.0.0) was not re-read for this.
+- `src/test/releaseConfig.test.ts` stays green either way: until release-please's pull request, the manifest and
+  `package.json` both say 0.1.1; from that pull request on both say 0.2.0 and `CHANGELOG.md` carries its section.
+- A consumer installs 0.2.0 from GitHub Packages (README "Use": the scope's `.npmrc` and a `read:packages` token) — not
+  from npmjs. `pack-and-consume --published 0.2.0` is the post-deploy proof, run after the release; run against 0.1.1
+  it fails by design, because the checked-out manifest names `./components` and 0.1.1's tarball does not carry it.
 - Nothing here runs a release, publishes, creates a tag or touches a secret.
-
 ## 8. What this does NOT prove (carried into `research/module_tests.md`)
 
 - That a browser turns Enter / Space on a `<button>` into a click: the platform's contract, used in the
@@ -598,3 +607,21 @@ One scan of mine was weak and its own fixture caught it (`min-width: 100%` slipp
 browser, with the real stylesheet broken: cells no longer breaking a word turned the check RED for
 `dataTable/unbreakable-cell`; the table no longer a size container turned 25 case renders RED (the same symptom as the
 stylesheet before 4.6a: `the page scrolls sideways: 363px of 300px`).
+
+**Found on the rebased branch, 2026-10-18.**
+
+- **The layout check exited 1 after a GREEN run on a loaded Windows machine.** The browser was ended and the profile
+  folder removed, and the removal failed with `EPERM` while Chrome's helpers (the crash handler above all) were still
+  ending — up to 40 s after the kill. `rmSync`'s `maxRetries` did not help: Node 24 threw after 3 ms with
+  `maxRetries: 240` set (measured with a scratch script). `scripts/layout-check.mjs` now ends the browser at once (a
+  throwaway profile has nothing to close politely: `taskkill /T` of its own PID on Windows, the handle's `kill()`
+  elsewhere) and removes the folder in its own bounded retry loop of up to two minutes (`scripts/lib/cleanup.mjs`). A folder that stays busy only prints a warning on stderr: the check's own result — its error or its pass — stands. `taskkill` has a 30 s ceiling. Seen RED on every run while the machine was loaded (exit 1, `FAILED -
+  EPERM, Permission denied`), green after the fix (exit 0, no folder left) on the same machine. The retry and "a failed removal never replaces the run's result" are unit-tested with a fake removal in layoutCheck.test.ts (red first against a removal that propagated: the run's error was replaced by `EPERM busy`, and a passing run threw); the Windows timing itself needs Chrome and a loaded machine, so it is not; `layoutCheck.test.ts`'s `CHROME_PATH` tests (item 27's no-browser exit) pass.
+- **Break-it of the `CHROME_PATH` test:** `findChrome` made to fall back when `CHROME_PATH` names nothing turns the test
+  RED with the real symptom (`actual: 0, expected: 3` — another browser ran the whole check and passed); restored
+  byte-identical.
+- **After the rebase** (the files it touched, each restored byte-identical): `sideEffects: false` and the `./components.css`
+  export removed each turn `packaging.test.ts`' manifest test RED; the consumer fixture without its `components.css`
+  import fails `pack-and-consume` at `bundle` (*the webview bundle emitted no dist/webview.css*); `REQUIRED` back to the two
+  root files fails it at `contents` (*dist/ in the tarball holds more than .js, .d.ts and the files exports names:
+  dist/components/components.css*).

@@ -4,7 +4,7 @@
     "How a release is decided here: release-please reads the conventional commits on main since the last",
     "tag, opens a pull request that bumps package.json and writes CHANGELOG.md, and MERGING that pull",
     "request is what cuts the tag and the GitHub release. `.github/workflows/release.yml` is what the",
-    "published GitHub release then starts: it packs, consumes and publishes to npm. Nothing else publishes.",
+    "published GitHub release then starts: it packs, consumes and publishes to GitHub Packages (npm.pkg.github.com). Nothing else publishes.",
     "",
     "ONE PACKAGE, AT THE ROOT, AND THE TAG HAS NO COMPONENT: `v0.1.0`, not `vscode-webview-kit-v0.1.0`.",
     "release.yml refuses any tag that is not exactly `v<major>.<minor>.<patch>`, so a prefixed tag would",
@@ -43,7 +43,7 @@
   ],
   "$draft": [
     "NOT A DRAFT, unlike the siblings, and on purpose. Their releases carry ASSETS that are uploaded after",
-    "the tag, so a public release would sit empty; this one carries none - the artefact is on npm. A",
+    "the tag, so a public release would sit empty; this one carries none - the artefact is on GitHub Packages. A",
     "published (non-draft) release is what raises `release: published`, the one event release.yml listens",
     "to; a draft raises nothing until a person publishes it."
   ],

@@ -377,12 +377,12 @@ commit are pull requests in those repositories.
 components — `Tabs`, `DataTable`, `RecommendationCard`, theme tokens — behind a second entry,
 `./components`, with their stylesheet and a Storybook. This plan is the first step of that one's order.
 
-| Item | This plan (0.1.0) | PLAN_kit_components_storybook.md (0.2.0) |
+| Item | This plan (0.1.x) | PLAN_kit_components_storybook.md (0.2.0) |
 |---|---|---|
 | the help, display, settings, text and webview modules; the root entry `"."` | builds them; nothing in them changes | shows the display controls and the Help viewer in its Storybook as they are; adds nothing to the root entry |
 | the release pipeline (release-please, `release.yml`, `pack-and-consume`) | builds it | widens `pack-and-consume` to a browser bundle of `./components` + its CSS; changes nothing that publishes |
-| the order | first: 0.1.0 | second: K1, then 0.2.0 |
-| the first published version | 0.1.0 — **unless it is not released by the time K1 merges**: then K1's squash commit carries `Release-As: 0.2.0` and 0.1.0 is never published separately (that plan's §7). DoD B below then reads "0.2.0" where it says "0.1.0". | 0.2.0 |
+| the order | first: 0.1.0, which never reached a registry, then 0.1.1 | second: K1, then 0.2.0 |
+| the first published version | **0.1.1**, on GitHub Packages, 2026-10-17 (0.1.0's publish to npmjs failed; it was never published) | 0.2.0, also on GitHub Packages: K1 is a plain `feat:` on top of 0.1.1, and its squash commit still carries `Release-As: 0.2.0` (that plan's §7, rewritten 2026-10-18) |
 
 Disjoint: neither plan builds what the other's column names.
 

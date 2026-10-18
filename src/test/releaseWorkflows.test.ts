@@ -65,11 +65,123 @@ function publishStep(steps: readonly Map[]): Map {
   return found[0] as Map;
 }
 
-const publishSteps = (flow: Map): Map[] => stepsOf(mapAt(jobsOf(flow, 'release.yml')['publish'], 'publish'), 'publish');
-const publishJob = (flow: Map): Map => mapAt(jobsOf(flow, 'release.yml')['publish'], 'publish');
+const jobOf = (flow: Map, id: string): Map => mapAt(jobsOf(flow, 'release.yml')[id], `release.yml job "${id}"`);
+const stepsOfJob = (flow: Map, id: string): Map[] => stepsOf(jobOf(flow, id), id);
+const publishSteps = (flow: Map): Map[] => stepsOfJob(flow, 'publish');
+const publishJob = (flow: Map): Map => jobOf(flow, 'publish');
 const runs = (pattern: RegExp) => (step: Map): boolean => typeof step['run'] === 'string' && pattern.test(step['run']);
-const PACKED = '${{ steps.pack.outputs.tarball }}';
+const usesAction = (action: string) => (step: Map): boolean => String(step['uses']).startsWith(`${action}@`);
+const TARBALL_PATH = '${{ steps.tarball.outputs.path }}';
 const JOB_TOKEN = '${{ secrets.GITHUB_TOKEN }}';
+const PRIVILEGED_PERMISSIONS = ['packages', 'id-token', 'attestations'];
+const PRIVILEGED_ACTIONS = ['actions/checkout', 'actions/setup-node', 'actions/download-artifact', 'actions/attest-build-provenance'];
+
+/** The index of the step satisfying `found` in `steps`, or a failure naming what is missing. */
+function indexOfStep(steps: readonly Map[], what: string, found: (step: Map) => boolean): number {
+  const at = steps.findIndex(found);
+  assert.ok(at >= 0, `there is no step that ${what}`);
+
+  return at;
+}
+
+/** Every `[jobId, step]` of `release.yml` that has steps (a job that calls a reusable workflow has none). */
+function releaseSteps(flow: Map): [string, Map][] {
+  return Object.entries(jobsOf(flow, 'release.yml'))
+    .filter(([id, job]) => mapAt(job, id)['steps'] !== undefined)
+    .flatMap(([id]) => stepsOfJob(flow, id).map((step): [string, Map] => [id, step]));
+}
+
+/** Whether a job grants `packages`, `id-token` or `attestations` at `write` — the credentials the publish needs. */
+function isPrivileged(job: Map): boolean {
+  const permissions = job['permissions'];
+  if (permissions === undefined || permissions === null || typeof permissions === 'string' || Array.isArray(permissions)) {
+    return false;
+  }
+
+  return PRIVILEGED_PERMISSIONS.some((key) => (permissions as Map)[key] === 'write');
+}
+
+/**
+ * The three shapes a `run:` in a privileged job may take: the tarball check, the publish script, the verify
+ * script. The check must not name a package manager — `sha256sum -c` needs none, and a line after it that
+ * installs would run dependency code beside the credentials.
+ */
+const PRIVILEGED_RUN_SHAPES: readonly ((run: string) => boolean)[] = [
+  (run) => run.startsWith('set -euo pipefail') && run.includes('sha256sum -c "$TARBALL.sha256"') && !/\b(npm|npx|yarn|pnpm)\b/.test(run),
+  (run) => run === 'node scripts/publish-once.mjs "$TARBALL"',
+  (run) => run.startsWith('node scripts/verify-published.mjs --tarball "$TARBALL"'),
+];
+
+/** Whether a step of a privileged job is outside the allowlist: an unknown run shape, an unknown action, a cached setup-node. */
+function outsideAllowlist(step: Map): boolean {
+  if (typeof step['run'] === 'string') {
+    return !PRIVILEGED_RUN_SHAPES.some((shape) => shape(step['run'] as string));
+  }
+  const action = String(step['uses'] ?? '').split('@')[0] as string;
+  if (!PRIVILEGED_ACTIONS.includes(action)) {
+    return true;
+  }
+
+  return action === 'actions/setup-node' && step['with'] !== undefined && 'cache' in mapAt(step['with'], 'setup-node with');
+}
+
+const stepLabel = (step: Map): string => String(step['name'] ?? step['run'] ?? step['uses']).split('\n')[0] as string;
+
+/** The entries of publish's checkout `sparse-checkout` (a scalar or a literal block), empty when there is none. */
+function sparseEntries(flow: Map): string[] {
+  const checkout = publishSteps(flow).find(usesAction('actions/checkout'));
+  const sparse = checkout?.['with'] === undefined ? undefined : mapAt(checkout['with'], 'checkout with')['sparse-checkout'];
+
+  return typeof sparse === 'string' ? sparse.split(/\r?\n/).map((entry) => entry.trim()).filter((entry) => entry !== '') : [];
+}
+
+/** The module specifiers a source file imports statically (`import … from`, `import '…'`, `export … from`) or dynamically. */
+function importSpecifiers(source: string): string[] {
+  const patterns = [
+    /\bimport\s*['"]([^'"]+)['"]/g,
+    /\bimport\s+[\w$*{][^'";]*?\s*from\s*['"]([^'"]+)['"]/g,
+    /\bexport\s+(?:\*|\{[^}]*\})(?:\s+as\s+[\w$]+)?\s+from\s*['"]([^'"]+)['"]/g,
+    /\bimport\(\s*['"]([^'"]+)['"]\s*\)/g,
+  ];
+
+  return patterns.flatMap((pattern) => [...source.matchAll(pattern)].map((match) => match[1] as string));
+}
+
+/** The repository-relative file a relative `spec` names from `file`, or `undefined` when it is not relative or does not exist. */
+function resolveImport(file: string, spec: string): string | undefined {
+  if (!spec.startsWith('./') && !spec.startsWith('../')) {
+    return undefined;
+  }
+  const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(file), spec));
+
+  return fs.statSync(path.join(ROOT, resolved), { throwIfNoEntry: false })?.isFile() === true ? resolved : undefined;
+}
+
+/**
+ * Walks the static import closure of `entries` (repository-relative, `/`-separated). Returns every file visited and
+ * every import that is neither a `node:` built-in nor a relative file inside one of `cone`'s folders.
+ */
+function importClosure(entries: readonly string[], cone: readonly string[]): { visited: string[]; escapes: string[] } {
+  const visited: string[] = [];
+  const escapes: string[] = [];
+  const pending = [...entries];
+  for (let file = pending.pop(); file !== undefined; file = pending.pop()) {
+    if (visited.includes(file)) {
+      continue;
+    }
+    visited.push(file);
+    for (const spec of importSpecifiers(fs.readFileSync(path.join(ROOT, file), 'utf8')).filter((candidate) => !candidate.startsWith('node:'))) {
+      const target = resolveImport(file, spec);
+      if (target !== undefined && cone.some((folder) => target.startsWith(`${folder}/`))) {
+        pending.push(target);
+      } else {
+        escapes.push(`${file} imports ${spec}`);
+      }
+    }
+  }
+
+  return { visited, escapes };
+}
 
 /** Every file under `dir` (relative to the repository, `/`-separated), recursively. */
 function filesUnder(dir: string): string[] {
@@ -94,13 +206,18 @@ test('no npm token exists anywhere: NPM_TOKEN appears in no workflow, no .github
   assert.deepEqual(named, [], 'a file still names the npm token the publish no longer uses');
 });
 
-test('the publish job\'s permissions are exactly contents: read, packages: write, id-token: write, attestations: write — and packages, id-token and attestations are keys nowhere else in any workflow', () => {
+test('the publish job\'s permissions are exactly contents: read, packages: write, id-token: write, attestations: write — id-token and attestations are keys nowhere else in any workflow, and packages only at read, in the consume job', () => {
   const flow = workflow('release.yml');
+  const grants = (file: string, key: string): [string, Yaml][] =>
+    walk(workflow(file), file).filter(([at]) => at.endsWith(`.${key}`)).sort(([a], [b]) => a.localeCompare(b));
 
   assert.deepEqual(publishJob(flow)['permissions'], { contents: 'read', packages: 'write', 'id-token': 'write', attestations: 'write' });
-  for (const key of ['packages', 'id-token', 'attestations']) {
+  for (const key of PRIVILEGED_PERMISSIONS) {
     for (const file of allWorkflows()) {
-      assert.deepEqual(keysNamed(workflow(file), file, key), file === 'release.yml' ? [`release.yml.jobs.publish.permissions.${key}`] : [], `${file}: where "${key}" is granted`);
+      const expected: [string, Yaml][] = file !== 'release.yml' ? [] : key === 'packages'
+        ? [['release.yml.jobs.consume.permissions.packages', 'read'], ['release.yml.jobs.publish.permissions.packages', 'write']]
+        : [[`release.yml.jobs.publish.permissions.${key}`, 'write']];
+      assert.deepEqual(grants(file, key), expected, `${file}: where "${key}" is granted, and at what level`);
     }
   }
 });
@@ -121,57 +238,176 @@ test('setup-node in the publish job points at package.json\'s publishConfig.regi
   assert.equal(inputs['scope'], manifest().name.split('/')[0]);
 });
 
-test('the publish job packs ONCE, then attests that tarball, then publishes it through publish-once, then verifies, then consumes — after the guard and npm test', () => {
-  const steps = publishSteps(workflow('release.yml'));
-  const index = (what: string, found: (step: Map) => boolean): number => {
-    const at = steps.findIndex(found);
-    assert.ok(at >= 0, `the publish job has no step that ${what}`);
-    return at;
-  };
-  const guard = index('runs the release guard', runs(/release-guard\.mjs/));
-  const tested = index('runs npm test', runs(/^npm test$/));
-  const packed = index('packs once (id: pack)', (step) => step['id'] === 'pack');
-  const attested = index('attests with actions/attest-build-provenance', (step) => /^actions\/attest-build-provenance@[0-9a-f]{40}$/.test(String(step['uses'])));
-  const published = steps.indexOf(publishStep(steps));
-  const verified = index('runs verify-published', runs(/verify-published\.mjs/));
-  const consumed = index('runs pack-and-consume against the published version', runs(/pack-and-consume\.mjs --published/));
+test('the workflow runs npm pack in exactly ONE step — in the build job, id pack, which writes tarball= and the .sha256 — so exactly one tarball exists to be attested, published and verified', () => {
+  const flow = workflow('release.yml');
+  const packers = releaseSteps(flow).filter(([, step]) => runs(/\bnpm pack\b/)(step));
 
-  assert.ok(guard < tested && tested < packed && packed < attested && attested < published && published < verified && verified < consumed,
-    `order: guard ${guard}, test ${tested}, pack ${packed}, attest ${attested}, publish ${published}, verify ${verified}, consume ${consumed}`);
-  const packers = steps.filter(runs(/\bnpm pack\b/));
-  assert.equal(packers.length, 1, `the publish job runs npm pack in ${packers.length} steps — exactly one tarball may exist`);
-  assert.equal(packers[0], steps[packed], 'the one npm pack is not the step with id pack');
-  assert.match(String(steps[packed]?.['run']), /tarball=.*>> *"\$GITHUB_OUTPUT"/, 'the pack step does not write tarball= to $GITHUB_OUTPUT');
+  assert.equal(packers.length, 1, `release.yml runs npm pack in ${packers.length} steps (${packers.map(([id, step]) => `${id}: ${stepLabel(step)}`).join('; ')}) — exactly one tarball may exist`);
+  assert.equal(packers[0]?.[0], 'build', 'the one npm pack is not in the build job');
+  assert.equal(packers[0]?.[1]['id'], 'pack', 'the one npm pack is not the step with id pack');
+  assert.match(String(packers[0]?.[1]['run']), /tarball=.*>> *"\$GITHUB_OUTPUT"/, 'the pack step does not write tarball= to $GITHUB_OUTPUT');
+  assert.match(String(packers[0]?.[1]['run']), /\.sha256/, 'the pack step does not write the .sha256 beside the tarball');
 });
 
-test('the attested subject, the published tarball and the verified tarball are ONE expression — steps.pack.outputs.tarball — and the commands are exactly the two scripts', () => {
+test('the build job runs the guard, installs, tests, packs ONCE and uploads — in that order — and the publish job attests, then publishes through publish-once, then verifies', () => {
+  const flow = workflow('release.yml');
+  const build = stepsOfJob(flow, 'build');
+  const guard = indexOfStep(build, 'runs the release guard (build)', runs(/release-guard\.mjs/));
+  const installed = indexOfStep(build, 'runs npm ci (build)', runs(/^npm ci$/));
+  const tested = indexOfStep(build, 'runs npm test (build)', runs(/^npm test$/));
+  const packed = indexOfStep(build, 'packs once (id: pack, build)', (step) => step['id'] === 'pack');
+  const uploaded = indexOfStep(build, 'uploads the artifact (build)', usesAction('actions/upload-artifact'));
+  assert.ok(guard < installed && installed < tested && tested < packed && packed < uploaded,
+    `build order: guard ${guard}, ci ${installed}, test ${tested}, pack ${packed}, upload ${uploaded}`);
+
+  const steps = publishSteps(flow);
+  const attested = indexOfStep(steps, 'attests with actions/attest-build-provenance', (step) => /^actions\/attest-build-provenance@[0-9a-f]{40}$/.test(String(step['uses'])));
+  const published = steps.indexOf(publishStep(steps));
+  const verified = indexOfStep(steps, 'runs verify-published', runs(/verify-published\.mjs/));
+  assert.ok(attested < published && published < verified, `publish order: attest ${attested}, publish ${published}, verify ${verified}`);
+});
+
+test('the attested subject, the published tarball and the verified tarball are ONE expression — steps.tarball.outputs.path — and the commands are exactly the two scripts', () => {
   const steps = publishSteps(workflow('release.yml'));
-  const attest = steps.find((step) => String(step['uses']).startsWith('actions/attest-build-provenance@'));
+  const attest = steps.find(usesAction('actions/attest-build-provenance'));
   const publish = publishStep(steps);
   const verify = steps.find(runs(/verify-published\.mjs/));
 
-  assert.equal(mapAt(attest?.['with'], 'attest with')['subject-path'], PACKED);
-  assert.equal(mapAt(publish['env'], 'publish env')['TARBALL'], PACKED);
-  assert.equal(mapAt(verify?.['env'], 'verify env')['TARBALL'], PACKED);
+  assert.equal(mapAt(attest?.['with'], 'attest with')['subject-path'], TARBALL_PATH);
+  assert.equal(mapAt(publish['env'], 'publish env')['TARBALL'], TARBALL_PATH);
+  assert.equal(mapAt(verify?.['env'], 'verify env')['TARBALL'], TARBALL_PATH);
   assert.equal(publish['run'], 'node scripts/publish-once.mjs "$TARBALL"');
   assert.equal(verify?.['run'], 'node scripts/verify-published.mjs --tarball "$TARBALL" --check version --check integrity --check attestation');
 });
 
-test('the job\'s own token is the only credential: NODE_AUTH_TOKEN on exactly the publish, verify and consume steps, GH_TOKEN on the verify step only, each ${{ secrets.GITHUB_TOKEN }}, and neither name anywhere else', () => {
+test('the job\'s own token is the only credential: NODE_AUTH_TOKEN on exactly the publish and verify steps of publish and the consume step of consume, GH_TOKEN on the verify step only, each ${{ secrets.GITHUB_TOKEN }}, and neither name anywhere else', () => {
   const flow = workflow('release.yml');
   const steps = publishSteps(flow);
-  const at = (step: Map | undefined): string => `release.yml.jobs.publish.steps.${steps.findIndex((candidate) => candidate === step)}.env`;
+  const consumer = releaseSteps(flow).find(([id, step]) => id !== 'publish' && runs(/pack-and-consume\.mjs --published/)(step));
+  const at = (job: string, all: readonly Map[], step: Map | undefined): string => `release.yml.jobs.${job}.steps.${all.findIndex((candidate) => candidate === step)}.env`;
   const publish = publishStep(steps);
   const verify = steps.find(runs(/verify-published\.mjs/));
-  const consume = steps.find(runs(/pack-and-consume\.mjs --published/));
   const named = (name: string): string[] => stringsWith(flow, 'release.yml', name).concat(keysNamed(flow, 'release.yml', name)).sort();
 
-  assert.deepEqual(named('NODE_AUTH_TOKEN'), [publish, verify, consume].map((step) => `${at(step)}.NODE_AUTH_TOKEN`).sort());
-  assert.deepEqual(named('GH_TOKEN'), [`${at(verify)}.GH_TOKEN`]);
+  assert.ok(consumer !== undefined, 'no job other than publish runs the consumer fixture');
+  const consumeJob = consumer[0];
+  const consume = consumer[1];
+  assert.deepEqual(named('NODE_AUTH_TOKEN'), [
+    `${at('publish', steps, publish)}.NODE_AUTH_TOKEN`,
+    `${at('publish', steps, verify)}.NODE_AUTH_TOKEN`,
+    `${at(consumeJob, stepsOfJob(flow, consumeJob), consume)}.NODE_AUTH_TOKEN`,
+  ].sort());
+  assert.deepEqual(named('GH_TOKEN'), [`${at('publish', steps, verify)}.GH_TOKEN`]);
   for (const step of [publish, verify, consume]) {
     assert.equal(mapAt(step?.['env'], 'env')['NODE_AUTH_TOKEN'], JOB_TOKEN);
   }
   assert.equal(mapAt(verify?.['env'], 'verify env')['GH_TOKEN'], JOB_TOKEN);
+});
+
+test('a job that can publish or sign runs ONLY the tarball check, publish-once and verify-published, uses only checkout, setup-node (uncached), download-artifact and attest — no dependency code, in any workflow', () => {
+  const offending = allWorkflows().flatMap((file) => {
+    const jobs = jobsOf(workflow(file), file);
+
+    return Object.entries(jobs)
+      .filter(([id, job]) => isPrivileged(mapAt(job, id)))
+      .map(([id, job]) => {
+        const steps = mapAt(job, id)['steps'] === undefined ? [] : stepsOf(mapAt(job, id), id);
+        const outside = steps.filter(outsideAllowlist).map(stepLabel);
+
+        return mapAt(job, id)['steps'] === undefined ? `${file} ${id} calls a workflow whose steps are not readable here` : outside.length === 0 ? '' : `${file} ${id} runs steps outside the allowlist: ${outside.join(', ')}`;
+      })
+      .filter((message) => message !== '');
+  });
+
+  assert.deepEqual(offending, [], 'a privileged job (packages, id-token or attestations at write) runs something other than the three shapes');
+});
+
+test('the allowlist is not vacuous: the build job DOES run npm ci, npm test and npm pack — the dependency code the privileged job must never run', () => {
+  const build = stepsOfJob(workflow('release.yml'), 'build');
+
+  for (const command of ['ci', 'test', 'pack']) {
+    assert.ok(build.some(runs(new RegExp(`\\bnpm\\s+${command}\\b`))), `the build job has no "npm ${command}" step`);
+  }
+});
+
+test('the bytes are made unprivileged: build holds contents: read alone, outputs the ONE pack step\'s tarball name, and uploads it with the .sha256 under a pinned upload-artifact that errors on no files', () => {
+  const flow = workflow('release.yml');
+  const build = jobOf(flow, 'build');
+  const upload = stepsOfJob(flow, 'build').find(usesAction('actions/upload-artifact'));
+
+  assert.deepEqual(build['permissions'], { contents: 'read' });
+  assert.deepEqual(build['outputs'], { tarball: '${{ steps.pack.outputs.tarball }}' });
+  assert.equal(build['needs'], 'guard');
+  assert.ok(upload !== undefined, 'the build job does not upload the tarball');
+  assert.match(String(upload['uses']), /^actions\/upload-artifact@[0-9a-f]{40}$/);
+  const inputs = mapAt(upload['with'], 'upload with');
+  assert.equal(inputs['if-no-files-found'], 'error');
+  assert.equal(inputs['path'], '${{ runner.temp }}/release/', 'the artifact is not the folder pack wrote the tarball and its .sha256 into');
+});
+
+test('the artifact outlives the re-run window: the upload keeps it at least 30 days, a number', () => {
+  const upload = stepsOfJob(workflow('release.yml'), 'build').find(usesAction('actions/upload-artifact'));
+  const retention = Number(mapAt(upload?.['with'], 'upload with')['retention-days']);
+
+  assert.ok(Number.isInteger(retention) && retention >= 30, `retention-days is ${retention}; GitHub re-runs a workflow for 30 days, so the artifact must live that long`);
+});
+
+test('the privileged job works on the build\'s bytes: publish needs build, downloads the artifact build uploaded, checks its .sha256 before it attests, and the order is download, check, attest, publish, verify', () => {
+  const flow = workflow('release.yml');
+  const steps = publishSteps(flow);
+  const upload = stepsOfJob(flow, 'build').find(usesAction('actions/upload-artifact'));
+  const download = steps.find(usesAction('actions/download-artifact'));
+  const check = steps.find((step) => step['id'] === 'tarball');
+
+  assert.ok(listAt(publishJob(flow)['needs'], 'publish needs').includes('build'), 'publish does not need build');
+  assert.ok(upload !== undefined && download !== undefined, 'the upload or the download step is missing');
+  assert.match(String(download['uses']), /^actions\/download-artifact@[0-9a-f]{40}$/);
+  assert.equal(mapAt(download['with'], 'download with')['name'], mapAt(upload['with'], 'upload with')['name'], 'publish downloads another artifact than the one build uploaded');
+  assert.ok(check !== undefined, 'publish has no step with id tarball');
+  assert.equal(mapAt(check['env'], 'tarball env')['TARBALL'], '${{ needs.build.outputs.tarball }}');
+  assert.match(String(check['run']), /sha256sum -c "\$TARBALL\.sha256"/);
+  assert.match(String(check['run']), /grep -Eqx/, 'the tarball step does not refuse a name that is not a plain .tgz file name before using it');
+  // sha256sum writes `hash  name` in text mode and `hash *name` in binary mode; the name is read in either.
+  assert.match(String(check['run']), /awk '\{sub\(\/\^\\\*\/, "", \$2\); print \$2\}' "\$TARBALL\.sha256"/, 'the tarball step does not check, in text and binary mode alike, that the .sha256 names exactly that file');
+  assert.match(String(check['run']), /::error::/, 'the tarball step does not say why it refuses');
+  assert.match(String(check['run']), /path=.*>> *"\$GITHUB_OUTPUT"/, 'the tarball step does not write path= to $GITHUB_OUTPUT');
+
+  const downloaded = steps.indexOf(download);
+  const checked = steps.indexOf(check);
+  const attested = indexOfStep(steps, 'attests', usesAction('actions/attest-build-provenance'));
+  const published = steps.indexOf(publishStep(steps));
+  const verified = indexOfStep(steps, 'runs verify-published', runs(/verify-published\.mjs/));
+  assert.ok(downloaded < checked && checked < attested && attested < published && published < verified,
+    `order: download ${downloaded}, check ${checked}, attest ${attested}, publish ${published}, verify ${verified}`);
+});
+
+test('the privileged job checks out scripts alone, without credentials: publish\'s checkout has a sparse-checkout naming scripts and persist-credentials: false', () => {
+  const flow = workflow('release.yml');
+  const checkout = publishSteps(flow).find(usesAction('actions/checkout'));
+
+  assert.ok(checkout !== undefined, 'publish has no checkout');
+  assert.ok(sparseEntries(flow).includes('scripts'), `publish's checkout sparse-checkout is ${JSON.stringify(sparseEntries(flow))}, which does not name scripts`);
+  assert.equal(mapAt(checkout['with'], 'checkout with')['persist-credentials'], 'false');
+});
+
+test('the privileged scripts import only node: built-ins and files inside the sparse-checkout cone — publish-once.mjs, verify-published.mjs and, through them, scripts/lib/npm.mjs', () => {
+  const cone = sparseEntries(workflow('release.yml'));
+  assert.ok(cone.length > 0, 'publish\'s checkout has no sparse-checkout, so every file of the repository is in the cone');
+  const { visited, escapes } = importClosure(['scripts/publish-once.mjs', 'scripts/verify-published.mjs'], cone);
+
+  assert.deepEqual(escapes, [], `a privileged script imports something the sparse checkout (${cone.join(', ')}) does not carry`);
+  assert.ok(visited.includes('scripts/lib/npm.mjs'), `the walk did not reach scripts/lib/npm.mjs (visited: ${visited.join(', ')}) — the import reader is blind`);
+});
+
+test('the consumer fixture runs unprivileged and after the publish: a job other than publish runs pack-and-consume --published, needs publish, holds contents: read and packages: read, with the job token', () => {
+  const flow = workflow('release.yml');
+  const consumer = releaseSteps(flow).find(([id, step]) => id !== 'publish' && runs(/^node scripts\/pack-and-consume\.mjs --published$/)(step));
+
+  assert.ok(consumer !== undefined, 'no job other than publish runs node scripts/pack-and-consume.mjs --published');
+  const job = jobOf(flow, consumer[0]);
+  assert.ok(listAt(job['needs'], `${consumer[0]} needs`).includes('publish'), `${consumer[0]} does not need publish`);
+  assert.deepEqual(job['permissions'], { contents: 'read', packages: 'read' });
+  assert.equal(mapAt(consumer[1]['env'], 'consume env')['NODE_AUTH_TOKEN'], JOB_TOKEN);
 });
 
 test('no run: in any workflow publishes by hand (npm publish), asks for npm provenance (--provenance) or an access level (--access)', () => {
@@ -188,13 +424,14 @@ test('no run: in any workflow publishes by hand (npm publish), asks for npm prov
   assert.deepEqual(offending, [], 'a run: script publishes outside publish-once.mjs, or asks for what GitHub Packages does not take');
 });
 
-test('release.yml: the publish job needs the guard AND its own in-file call of the reusable pack-and-consume workflow', () => {
+test('release.yml: the publish job needs the guard, its own in-file call of the reusable pack-and-consume workflow, AND the build', () => {
   const jobs = jobsOf(workflow('release.yml'), 'release.yml');
   const call = packAndConsumeCall(jobs);
   const needs = listAt(mapAt(jobs['publish'], 'publish')['needs'], 'publish needs');
 
   assert.ok(needs.includes(call), `publish needs ${JSON.stringify(needs)}, not the pack-and-consume call "${call}"`);
   assert.ok(needs.includes('guard'), `publish needs ${JSON.stringify(needs)}, not the guard`);
+  assert.ok(needs.includes('build'), `publish needs ${JSON.stringify(needs)}, not the build`);
   assert.equal(mapAt(jobs[call], call)['needs'], 'guard', 'pack-and-consume runs only once the guard passed');
 });
 

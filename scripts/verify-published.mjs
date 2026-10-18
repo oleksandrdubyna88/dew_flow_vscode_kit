@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * verify-published — what GitHub Packages SERVES for one version of this package, after `release.yml`
- * publishes it and whenever POST_DEPLOY.md is run (E3.S2, `todo/PLAN_publish_to_github_packages.md`; the
+ * publishes it and whenever POST_DEPLOY.md is run (E3.S2, `research/PLAN_publish_to_github_packages.md`; the
  * family rule "verify the ARTEFACT, not the source").
  *
  *     node scripts/verify-published.mjs [<version>] [--tarball <file>] [--check version|integrity|attestation|visibility]...

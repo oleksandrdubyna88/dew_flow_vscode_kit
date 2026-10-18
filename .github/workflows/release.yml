@@ -4,7 +4,7 @@ name: release
 # PUBLISHES `@oleksandrdubyna88/vscode-webview-kit` TO GitHub Packages (npm.pkg.github.com), with a GitHub
 # artifact attestation, and nothing else does. It publishes with the job's own `GITHUB_TOKEN`; there is no
 # npm token anywhere (the release that tried npmjs, run 38925094342, failed with E403, and that plan is
-# superseded: `todo/PLAN_publish_to_github_packages.md`).
+# superseded: `research/PLAN_publish_to_github_packages.md`).
 #
 # Started ONLY by a published GitHub release — the one release-please cuts when its release pull
 # request merges (`release-please.yml`, with the App token: a release made with `GITHUB_TOKEN` would
@@ -17,22 +17,41 @@ name: release
 #                     the same version (`.github/scripts/release-guard.mjs`, tested over facts)
 #   pack-and-consume  the reusable workflow ci.yml runs on every pull request, on ubuntu AND windows, at
 #                     the tag: the PACKED tarball installs, type-checks, bundles and runs in a consumer
-#   publish           needs BOTH, so one red leg publishes nothing (common.development-workflow, "a release
-#                     that shipped SOME of its platforms"); environment `npm` holds no secret, only the
-#                     `v*`-tag deployment rule; this job alone has `packages: write`, `id-token: write` and
-#                     `attestations: write`. It re-checks the guard on its own checkout, runs the suite, then
-#                     packs ONCE, attests that tarball, publishes THAT tarball (once), verifies that what
-#                     GitHub Packages SERVES is the attested tarball, and consumes it in the fixture
+#   build             `contents: read` and nothing else: the guard again, `npm ci`, `npm test`, then ONE
+#                     `npm pack` with its `.sha256`, uploaded as the artifact `release-tarball`. Every
+#                     devDependency, and every package it pulls, runs HERE and only here
+#   publish           needs guard, pack-and-consume AND build, so one red leg publishes nothing
+#                     (common.development-workflow, "a release that shipped SOME of its platforms");
+#                     environment `npm` holds no secret, only the `v*`-tag deployment rule; this job alone
+#                     has `packages: write`, `id-token: write` and `attestations: write`. It checks out
+#                     `scripts/` alone, downloads the build's artifact, checks it, attests THAT tarball,
+#                     publishes it (once), and verifies that what GitHub Packages SERVES is the attested
+#                     tarball. It runs no dependency code: only the tarball check, `publish-once.mjs` and
+#                     `verify-published.mjs` (node built-ins and `gh` alone), and the suite holds that as an
+#                     allowlist of `run:` shapes and actions, and over the scripts' import closure
+#   consume           `contents: read` and `packages: read`: the consumer fixture against the PUBLISHED
+#                     version. It needs `npm ci` (TypeScript and esbuild), so it cannot live in `publish`
+#
+# WHY the split: before it, ONE job held the publish token and the signing identity and also ran `npm ci`,
+# `npm test` and the build, so a compromised devDependency ran in the process tree that could publish other
+# bytes or sign an attestation for bytes it chose. HONEST LIMIT: a compromised build dependency can STILL
+# choose the bytes it packs, and the attestation will then truthfully say "built by release.yml at the tag".
+# The split keeps the publish token and the signing identity away from dependency code; it does not make the
+# build trustworthy. The defences for the build stay the lockfile, `npm ci` and the pre-publish tests.
 #
 # `npm publish <tarball>` runs NO lifecycle script (npm runs `prepublishOnly` only for a directory spec),
-# so what guards the published bytes is this job's own `npm test` and the `prepack` build inside the pack
-# step.
+# so what guards the published bytes is the build job's own `npm test` and the `prepack` build inside its
+# pack step.
 #
-# A RE-RUN after a successful publish publishes nothing and still verifies (`scripts/publish-once.mjs`): the
-# verify step then decides whether the served bytes are THIS run's attested bytes. A FAILED PUBLISH IS FIXED
-# FORWARD (PLAN_extract_the_kit §6.5): the tag and the GitHub release stay where they are and are never moved or deleted; the
-# cause is fixed on main and the next release-please pull request cuts the next patch, whose tag publishes. A
-# version that is served but is not the attested bytes is a bad release, fixed forward the same way.
+# RE-RUNS. "Re-run FAILED jobs" is the one to use: it reuses the SAME artifact (kept 30 days, GitHub's
+# re-run window) and re-runs the jobs that depend on the failed one, `consume` included. After a successful
+# publish it publishes nothing and still verifies (`scripts/publish-once.mjs`): the verify step then decides
+# whether the served bytes are THIS run's attested bytes. NEVER "Re-run all jobs" after a publish: it
+# re-packs, other bytes may come out, and verify refuses them. A FAILED PUBLISH IS FIXED FORWARD
+# (PLAN_extract_the_kit §6.5): the tag and the GitHub release stay where they are and are never moved or
+# deleted; the cause is fixed on main and the next release-please pull request cuts the next patch, whose tag
+# publishes. A version that is served but is not the attested bytes is a bad release, fixed forward the same
+# way.
 # ---------------------------------------------------------------------------
 
 on:
@@ -88,9 +107,77 @@ jobs:
       contents: read
     uses: ./.github/workflows/pack-and-consume.yml
 
+  # The ONLY job that runs dependency code, and it holds no credential but a read token: no `packages`, no
+  # `id-token`, no `attestations`, no `registry-url` (so no `.npmrc` with a token), no `cache`. Everything it
+  # makes leaves through the artifact.
+  build:
+    name: release · build the tarball
+    needs: guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      tarball: ${{ steps.pack.outputs.tarball }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      # Again, on THIS checkout: the job that builds verifies what it is about to build.
+      - id: guard
+        name: The guard, on the checkout that is built
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_DRAFT: ${{ github.event.release.draft }}
+          RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
+          RELEASE_AUTHOR_TYPE: ${{ github.event.release.author.type }}
+        run: node .github/scripts/release-guard.mjs
+
+      - name: Install
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      # ONE tarball (`prepack` builds dist/ inside it) and its sha256, into the runner's temp folder; the
+      # tarball's NAME is a step output, which is how the publish job learns it. Exactly one .tgz, or the run
+      # is red here.
+      - id: pack
+        name: Pack once — the one tarball that is attested, published and verified
+        run: |
+          set -euo pipefail
+          dest="$RUNNER_TEMP/release"
+          mkdir -p "$dest"
+          npm pack --pack-destination "$dest"
+          set -- "$dest"/*.tgz
+          if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
+            echo "::error::release: npm pack left $# tarball(s) in $dest, not exactly one"
+            exit 1
+          fi
+          name="$(basename "$1")"
+          (cd "$dest" && sha256sum "$name" > "$name.sha256")
+          echo "tarball=$name" >> "$GITHUB_OUTPUT"
+
+      # 30 days is GitHub's re-run window: a "Re-run failed jobs" inside it always finds the artifact.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-tarball
+          path: ${{ runner.temp }}/release/
+          if-no-files-found: error
+          retention-days: 30
+
+  # Holds the credentials and runs NO dependency code (`src/test/releaseWorkflows.test.ts`: an allowlist of
+  # `run:` shapes and of actions, and the scripts' import closure inside the sparse checkout below).
   publish:
     name: release · publish to GitHub Packages
-    needs: [guard, pack-and-consume]
+    needs: [guard, pack-and-consume, build]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # No secret lives here any more. The environment's deployment rule (README, "What the owner creates
@@ -105,60 +192,51 @@ jobs:
       # Stores the attestation on this repository (write ⊇ read: the verify step reads it back).
       attestations: write
     steps:
+      # `scripts/` alone (cone mode also brings the root files, `package.json` among them): no lock file, no
+      # source, nothing here can be installed. The two scripts import node built-ins and `scripts/lib/npm.mjs`.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.ref }}
-          fetch-depth: 0
+          sparse-checkout: scripts
           persist-credentials: false
 
-      # `registry-url` + `scope` write the .npmrc that `npm ci`, `npm pack` and `npm publish` in THIS job read
-      # (exported as NPM_CONFIG_USERCONFIG); the scripts' own npm children read registryEnv's file instead
-      # (plan §3, precedence). No `cache:`: the published bytes come from `npm ci` against the lockfile.
+      # `registry-url` + `scope` write the .npmrc that the job's own npm reads (exported as
+      # NPM_CONFIG_USERCONFIG); the scripts' own npm children read registryEnv's file instead (plan §3,
+      # precedence). No `cache:`.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           registry-url: https://npm.pkg.github.com
           scope: '@oleksandrdubyna88'
 
-      # Again, on THIS checkout: the job that publishes verifies what it is about to publish.
-      - id: guard
-        name: The guard, on the checkout that is published
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-tarball
+          path: from-build
+
+      # A CORRUPTION check of the artifact's round trip, redundant with the artifact service's own. It is NOT
+      # a provenance bind: the digest travels with the tarball from the same job. What binds the published
+      # bytes to the attested ones is verify's integrity check below. The tarball's path becomes a step
+      # OUTPUT: attest, publish and verify all name THIS output, so there is no second archive to confuse
+      # with it.
+      - id: tarball
+        name: The downloaded tarball matches its sha256
+        working-directory: from-build
         env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-          RELEASE_DRAFT: ${{ github.event.release.draft }}
-          RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
-          RELEASE_AUTHOR_TYPE: ${{ github.event.release.author.type }}
-        run: node .github/scripts/release-guard.mjs
-
-      - name: Install
-        run: npm ci
-
-      - name: Test
-        run: npm test
-
-      # ONE tarball (`prepack` builds dist/ inside it), into the runner's temp folder, its path a step OUTPUT:
-      # the attest step, the publish step and the verify step all name THIS output, so there is no second
-      # archive to confuse with it. Exactly one .tgz, or the run is red here.
-      - id: pack
-        name: Pack once — the one tarball that is attested, published and verified
+          TARBALL: ${{ needs.build.outputs.tarball }}
         run: |
           set -euo pipefail
-          dest="$RUNNER_TEMP/release"
-          mkdir -p "$dest"
-          npm pack --pack-destination "$dest"
-          set -- "$dest"/*.tgz
-          if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
-            echo "::error::release: npm pack left $# tarball(s) in $dest, not exactly one"
-            exit 1
-          fi
-          echo "tarball=$1" >> "$GITHUB_OUTPUT"
+          printf '%s' "$TARBALL" | grep -Eqx '[A-Za-z0-9._-]+\.tgz' || { echo "::error::release: the build named the tarball \"$TARBALL\", which is not a plain .tgz file name"; exit 1; }
+          [ "$(awk '{sub(/^\*/, "", $2); print $2}' "$TARBALL.sha256")" = "$TARBALL" ] || { echo "::error::release: the .sha256 does not name the tarball \"$TARBALL\""; exit 1; }
+          sha256sum -c "$TARBALL.sha256" || { echo "::error::release: the downloaded tarball does not match its sha256 — the artifact changed on its way from build"; exit 1; }
+          echo "path=$GITHUB_WORKSPACE/from-build/$TARBALL" >> "$GITHUB_OUTPUT"
 
       # SLSA v1 provenance of that tarball, signed with this job's OIDC token (identity: this repository,
       # release.yml, refs/tags/v<version>, github-hosted) and stored on the repository. Before the publish:
       # a tarball that cannot be attested is never published.
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: ${{ steps.pack.outputs.tarball }}
+          subject-path: ${{ steps.tarball.outputs.path }}
 
       # Publishes NOTHING when <name>@<version> is already served (a re-run after a publish that succeeded;
       # plan round finding 0) and says so; otherwise `npm publish <that tarball>`. Either way the next step
@@ -166,7 +244,7 @@ jobs:
       - name: Publish, once
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TARBALL: ${{ steps.pack.outputs.tarball }}
+          TARBALL: ${{ steps.tarball.outputs.path }}
         run: node scripts/publish-once.mjs "$TARBALL"
 
       # What GitHub Packages SERVES: the version; the served tarball's sha512 = dist.integrity = the attested
@@ -176,14 +254,36 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TARBALL: ${{ steps.pack.outputs.tarball }}
-          TARGET: ${{ steps.guard.outputs.version }}
+          TARBALL: ${{ steps.tarball.outputs.path }}
+          TARGET: ${{ needs.guard.outputs.version }}
         run: node scripts/verify-published.mjs --tarball "$TARBALL" --check version --check integrity --check attestation
 
-      # The consumer fixture against the PUBLISHED tarball (POST_DEPLOY.md item 5): downloaded from GitHub
-      # Packages, read, installed, type-checked, bundled and run — the same steps the pre-publish check took.
+  # The consumer fixture against the PUBLISHED tarball (POST_DEPLOY.md item 5): downloaded from GitHub
+  # Packages, read, installed, type-checked, bundled and run — the same steps the pre-publish check took. It
+  # needs `npm ci` (TypeScript, esbuild), so it runs here, with a read token, and not in `publish`.
+  consume:
+    name: release · the consumer fixture against the published version
+    needs: [guard, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.ref }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Install
+        run: npm ci
+
       - name: The consumer fixture against the published version
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TARGET: ${{ steps.guard.outputs.version }}
+          TARGET: ${{ needs.guard.outputs.version }}
         run: node scripts/pack-and-consume.mjs --published

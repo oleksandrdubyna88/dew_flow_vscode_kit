@@ -298,7 +298,10 @@ const table = createDataTable(document, {
 // The only reset of a waiting row is setRows (or dispose). A host that cannot answer should still answer, so the button does
 // not wait for ever: table.reveal(index, 'not available', request).
 // A fresh poll: table.setRows(rows) (revealed values and pending requests drop; if your value() or format() throws for a new
-// row, setRows throws and the table stays exactly as it was). When the page that owns the table goes away: table.dispose().
+// row, setRows throws and the table stays exactly as it was; only a countText that throws does so AFTER the rows were replaced,
+// leaving the status line stale until the next repaint). When the page that owns the table goes away: table.dispose() - it stops
+// every call to you (a header click or a keystroke no longer reaches countText) but does not clear revealed texts: call
+// table.setRows([]) BEFORE dispose(), or remove the root, if they must go.
 
 const card = createRecommendationCard(document, {
   tone: 'warning', word: 'Warning', sentence: 'Memory is low. Drop caches to free about 2.1 GiB.',

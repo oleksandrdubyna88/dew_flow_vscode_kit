@@ -368,6 +368,20 @@ onEveryDocument(<E extends KitElement<E>>(make: () => Driver<E>, name: string) =
       assert.throws(() => { view.reveal(0, 7 as never, 'r'); }, /must be a string, got number/);
     });
 
+    test('after dispose() a header sort click and a search keystroke neither repaint nor call the consumer\'s countText, and aria-sort stays', () => {
+      const driver = make();
+      let calls = 0;
+      const view = createDataTable(driver.doc, options({ countText: (shown, total) => { calls += 1; return `${shown}/${total}`; } }));
+      const root = driver.attach(view.root);
+      view.dispose();
+      calls = 0;
+      driver.click(head(root, 'pid').one('button'));
+      driver.type(root.one('input[type="search"]'), 'node');
+      assert.equal(calls, 0, 'a disposed table still called countText');
+      assert.equal(head(root, 'pid').attribute('aria-sort'), 'none', 'a header click sorted a disposed table');
+      assert.deepEqual(programs(root), ['node', 'claude', 'dotnet', 'Bash'], 'a keystroke filtered a disposed table');
+    });
+
     test('filter(query) refuses a non-string naming the type; the search box still passes its string', () => {
       const driver = make();
       const view = createDataTable(driver.doc, options());

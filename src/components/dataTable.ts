@@ -94,7 +94,9 @@ export interface DataTableView<E, Row> {
   /**
    * Replaces the rows; every revealed value and every pending request is dropped, the sort and the search are kept. All or
    * nothing: the new rows are built first (a consumer's `value()` or `format()` can throw there), and a `setRows` that throws
-   * leaves the table exactly as it was - rows, revealed texts, pending requests. A disposed table ignores it.
+   * leaves the table exactly as it was - rows, revealed texts, pending requests. A disposed table ignores it. One exception:
+   * a `countText` that throws does so AFTER the rows were replaced (it runs in the repaint) - only the status line is stale
+   * until the next repaint.
    */
   setRows(rows: readonly Row[]): void;
   /**
@@ -116,7 +118,9 @@ export interface DataTableView<E, Row> {
   /**
    * Stops the table talking to the consumer: pending requests are dropped, `reveal` answers `false` (no throw, no change to the
    * page), a click on a reveal button tells nobody, and `setRows`, `sortBy` and `filter` do nothing. Call it when the page that
-   * owns the table goes away; a late host reply or a late poll then cannot touch it. Safe to call twice.
+   * owns the table goes away; a late host reply or a late poll then cannot touch it, and a header click or a keystroke no
+   * longer repaints it (so `countText` is never called again). Safe to call twice. It does not clear what is revealed: a consumer
+   * that must clear revealed texts calls `setRows([])` BEFORE `dispose()`, or removes the root.
    */
   dispose(): void;
 }
@@ -390,7 +394,12 @@ function headClass(current: string, direction: SortDirection | undefined): strin
 export function createDataTable<E extends KitElement<E>, Row>(doc: KitDocument<E>, options: DataTableOptions<Row>): DataTableView<E, Row> {
   const spec = checked(options);
   const state: State<E, Row> = { rows: [], views: [], sort: spec.sort, query: '', pending: new Map(), generation: 0, requests: 0, disposed: false };
-  const repaint = (): void => { paint(parts, state, spec); };
+  // A disposed table repaints nothing, so a header click or a keystroke cannot reach the consumer's `countText` either.
+  const repaint = (): void => {
+    if (!state.disposed) {
+      paint(parts, state, spec);
+    }
+  };
   const onSort = (key: string): void => {
     const direction: SortDirection = state.sort?.key === key && state.sort.direction === 'ascending' ? 'descending' : 'ascending';
     state.sort = { key, direction };

@@ -38,7 +38,10 @@ export interface DataColumn<Row> {
 export interface DataTableReveal<Row> {
   /** The reveal column's header. */
   readonly header: string;
-  /** The reveal button's accessible name for a row — say WHAT it reveals, and of which row. */
+  /**
+   * The reveal button's accessible name for a row — say WHAT it reveals, and of which row. NEVER put the hidden value here:
+   * this text is in the page before any reveal.
+   */
   readonly button: (row: Row) => string;
   /**
    * Told the row's index in `rows` and an opaque REQUEST id - nothing about the row - when a person asks to reveal it. The
@@ -88,14 +91,21 @@ export interface DataTableOptions<Row> {
 
 export interface DataTableView<E, Row> {
   readonly root: E;
-  /** Replaces the rows; every revealed value is dropped, the sort and the search are kept. */
+  /**
+   * Replaces the rows; every revealed value and every pending request is dropped, the sort and the search are kept. All or
+   * nothing: the new rows are built first (a consumer's `value()` or `format()` can throw there), and a `setRows` that throws
+   * leaves the table exactly as it was - rows, revealed texts, pending requests. A disposed table ignores it.
+   */
   setRows(rows: readonly Row[]): void;
   /**
    * Shows `text` in row `index`'s reveal cell — the consumer's answer to an `onReveal(index, request)` — and answers `true`.
    * It applies only when `request` is the CURRENT pending request for that row in the current rows; then the request is spent.
-   * A missing, unknown, older or already answered request, or one from before `setRows`, changes nothing and answers `false`:
-   * a slow host reply must never land on a new row (not even when the same row is clicked again), and must not crash the page.
-   * Refused with a `TypeError`: an index outside the rows, a table with no reveal column, a text or a request that is not a string.
+   * A missing, unknown, older or already answered request, one from before `setRows`, a reply for a row that is not there any
+   * more (the rows shrank) or a reply after `dispose()` changes nothing and answers `false`: a slow host reply must never land
+   * on a new row (not even when the same row is clicked again), and must not crash the page. Refused with a `TypeError` - these
+   * are programmer errors, not late replies: a table with no reveal column, an index that is not a whole number of 0 or more, a
+   * text or a request that is not a string. A host that cannot answer should still answer, e.g.
+   * `reveal(index, 'not available', request)`: the only other reset of a waiting row is `setRows` (or `dispose`).
    */
   reveal(index: number, text: string, request: string): boolean;
   sortBy(key: string, direction: SortDirection): void;
@@ -103,6 +113,12 @@ export interface DataTableView<E, Row> {
   filter(query: string): void;
   /** The shown rows' indexes, in the order shown. */
   order(): number[];
+  /**
+   * Stops the table talking to the consumer: pending requests are dropped, `reveal` answers `false` (no throw, no change to the
+   * page), a click on a reveal button tells nobody, and `setRows`, `sortBy` and `filter` do nothing. Call it when the page that
+   * owns the table goes away; a late host reply or a late poll then cannot touch it. Safe to call twice.
+   */
+  dispose(): void;
 }
 
 /** One rendered row: its element, the texts it shows (what the search reads), and its reveal cell. */
@@ -138,6 +154,8 @@ interface State<E, Row> {
   generation: number;
   /** Requests made so far; never reset, so two clicks never share an id. */
   requests: number;
+  /** Set by `dispose()`: the table no longer talks to the consumer. */
+  disposed: boolean;
 }
 
 const ABSENT = '—';
@@ -371,7 +389,7 @@ function headClass(current: string, direction: SortDirection | undefined): strin
 
 export function createDataTable<E extends KitElement<E>, Row>(doc: KitDocument<E>, options: DataTableOptions<Row>): DataTableView<E, Row> {
   const spec = checked(options);
-  const state: State<E, Row> = { rows: [], views: [], sort: spec.sort, query: '', pending: new Map(), generation: 0, requests: 0 };
+  const state: State<E, Row> = { rows: [], views: [], sort: spec.sort, query: '', pending: new Map(), generation: 0, requests: 0, disposed: false };
   const repaint = (): void => { paint(parts, state, spec); };
   const onSort = (key: string): void => {
     const direction: SortDirection = state.sort?.key === key && state.sort.direction === 'ascending' ? 'descending' : 'ascending';
@@ -388,7 +406,7 @@ export function createDataTable<E extends KitElement<E>, Row>(doc: KitDocument<E
   // A click makes a REQUEST, recorded BEFORE the consumer hears of it so its answer can find it; `load` empties them. A button
   // that is already waiting does nothing: one question per row at a time.
   const ask = (index: number): void => {
-    if (!state.pending.has(index)) {
+    if (!state.disposed && !state.pending.has(index)) {
       state.requests += 1;
       const request = `${state.generation}:${state.requests}`;
       state.pending.set(index, request);
@@ -396,12 +414,15 @@ export function createDataTable<E extends KitElement<E>, Row>(doc: KitDocument<E
       spec.reveal?.onReveal(index, request);
     }
   };
+  // All or nothing: every row view is built FIRST - that is where a consumer's value() or format() can throw - and only then are
+  // the old rows, revealed texts and pending requests replaced, so a throw leaves the table exactly as it was.
   const load = (rows: readonly Row[]): void => {
+    const views = checkedRows(rows).map((row, index) => rowView(doc, spec, row, index, ask));
     tbody.textContent = '';
-    state.rows = checkedRows(rows);
+    state.rows = rows;
+    state.views = views;
     state.generation += 1;
     state.pending.clear();
-    state.views = rows.map((row, index) => rowView(doc, spec, row, index, ask));
     repaint();
   };
   load(spec.rows);
@@ -424,20 +445,30 @@ function paint<E extends KitElement<E>, Row>(parts: Parts<E>, state: State<E, Ro
 function view<E extends KitElement<E>, Row>(parts: Parts<E>, state: State<E, Row>, spec: DataTableOptions<Row>, ops: { load(rows: readonly Row[]): void; repaint(): void }): DataTableView<E, Row> {
   return {
     root: parts.root,
-    setRows: (rows) => { ops.load(rows); },
+    setRows: (rows) => { if (!state.disposed) { ops.load(rows); } },
     reveal: (index, revealed, request) => revealRow(state, spec, index, { revealed, request }, ops.repaint),
     sortBy: (key, direction) => {
-      state.sort = checkedSort(spec.columns, key, direction);
-      ops.repaint();
+      const sort = checkedSort(spec.columns, key, direction);
+      if (!state.disposed) {
+        state.sort = sort;
+        ops.repaint();
+      }
     },
     filter: (query) => {
-      state.query = checkedQuery(query);
-      if (parts.search !== undefined) {
-        writeValue(parts.search, state.query);
+      const checkedText = checkedQuery(query);
+      if (!state.disposed) {
+        state.query = checkedText;
+        if (parts.search !== undefined) {
+          writeValue(parts.search, state.query);
+        }
+        ops.repaint();
       }
-      ops.repaint();
     },
     order: () => kept(state, ordered(state, spec.columns)),
+    dispose: () => {
+      state.disposed = true;
+      state.pending.clear();
+    },
   };
 }
 
@@ -476,23 +507,43 @@ function checkedRequest(request: unknown): string | undefined {
   return request;
 }
 
+/** The arguments of a reveal that no honest consumer gets wrong: refused with a TypeError naming what (a late reply is NOT one of them). */
+function checkedAnswer<Row>(spec: DataTableOptions<Row>, index: number, answer: { revealed: unknown; request: unknown }): void {
+  if (spec.reveal === undefined) {
+    throw new TypeError('DataTable reveal: this table has no reveal column.');
+  }
+  checkedIndex(index);
+  checkedRevealed(answer.revealed);
+  checkedRequest(answer.request);
+}
+
+/** A row index: a whole number of 0 or more, or a `TypeError`. Whether a row has that index NOW is another question (a late reply). */
+function checkedIndex(index: unknown): void {
+  if (typeof index !== 'number' || !Number.isInteger(index) || index < 0) {
+    throw new TypeError(`DataTable reveal: the index must be a whole number, 0 or more, got ${String(index)}.`);
+  }
+}
+
+/** The row a reply may fill - the table is alive and `request` is the row's CURRENT one - or `undefined`: a late reply, answered false. */
+function pendingRow<E, Row>(state: State<E, Row>, index: number, request: string | undefined): RowView<E> | undefined {
+  return !state.disposed && isCurrent(state, index, request) ? rowAt(state, index) : undefined;
+}
+
 /**
  * The consumer's answer to `onReveal(index, request)`: the text goes into THAT row's reveal cell, and nowhere else, and only for
- * the row's CURRENT request - one from before `setRows`, an older click of the same row, a spent or unknown one answers false.
+ * the row's CURRENT request. A reply that is late - from before `setRows` (even when the same row was clicked again), for a row
+ * that is gone, spent, unknown or after `dispose()` - answers false and changes nothing: it is never an error.
  */
 function revealRow<E extends KitElement<E>, Row>(state: State<E, Row>, spec: DataTableOptions<Row>, index: number, answer: { revealed: string; request: string | undefined }, repaint: () => void): boolean {
-  const cell = revealCellAt(state, spec, index);
-  checkedRevealed(answer.revealed);
-  if (!isCurrent(state, index, checkedRequest(answer.request))) {
+  checkedAnswer(spec, index, answer);
+  const row = pendingRow(state, index, answer.request);
+  if (row?.revealCell === undefined) {
     return false;
   }
   state.pending.delete(index);
-  cell.textContent = answer.revealed;
-  cell.className = 'kit-table__reveal kit-table__reveal--shown';
-  const view = rowAt(state, index);
-  if (view !== undefined) {
-    view.revealed = answer.revealed;
-  }
+  row.revealCell.textContent = answer.revealed;
+  row.revealCell.className = 'kit-table__reveal kit-table__reveal--shown';
+  row.revealed = answer.revealed;
   repaint();
 
   return true;
@@ -505,19 +556,6 @@ function checkedQuery(query: unknown): string {
   }
 
   return query;
-}
-
-/** Row `index`'s reveal cell, or a `TypeError` saying why there is none. */
-function revealCellAt<E extends KitElement<E>, Row>(state: State<E, Row>, spec: DataTableOptions<Row>, index: number): E {
-  if (spec.reveal === undefined) {
-    throw new TypeError('DataTable reveal: this table has no reveal column.');
-  }
-  const cell = rowAt(state, index)?.revealCell;
-  if (cell === undefined) {
-    throw new TypeError(`DataTable reveal: there is no row ${String(index)}; the rows are 0 to ${state.views.length - 1}.`);
-  }
-
-  return cell;
 }
 
 /** Row `index` when it is a whole number naming a row; otherwise `undefined`. */

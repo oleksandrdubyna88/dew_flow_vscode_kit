@@ -284,16 +284,21 @@ const table = createDataTable(document, {
   search: { label: 'Search processes' },
   reveal: {
     header: 'Command line',
-    button: (row) => `Show the command line of ${row.program}`,
+    button: (row) => `Show the command line of ${row.program}`,      // NEVER the hidden value: this text is in the page before any reveal
     onReveal: (index, request) => vscode.postMessage({ type: 'reveal', index, request }),   // an index and an opaque request id, nothing of the row
   },
 });
 // when the host answers: table.reveal(index, commandLine, request) -> true, with the request id it was told. A reply with no
 // request, another or an older one, one answered already, or one from before a setRows (even when the same row was clicked
 // again) changes nothing and answers false. While it waits the button says "Waiting…" (`waitingText` to change it); a click
-// on a waiting button does nothing, so onReveal is told once.
-// Also: a reply for a row nobody asked about in the current rows
-// (no click, or the click came before a setRows) changes nothing and answers false. A fresh poll: table.setRows(rows) (revealed values drop)
+// on a waiting button does nothing, so onReveal is told once. The same goes for a reply for a row nobody asked about, a row
+// that is gone because setRows shrank the rows (a late reply is never an error), and any reply after table.dispose().
+// A wrong ARGUMENT is a TypeError, though: no reveal column, an index that is not a whole number of 0 or more, a text or a
+// request that is not a string.
+// The only reset of a waiting row is setRows (or dispose). A host that cannot answer should still answer, so the button does
+// not wait for ever: table.reveal(index, 'not available', request).
+// A fresh poll: table.setRows(rows) (revealed values and pending requests drop; if your value() or format() throws for a new
+// row, setRows throws and the table stays exactly as it was). When the page that owns the table goes away: table.dispose().
 
 const card = createRecommendationCard(document, {
   tone: 'warning', word: 'Warning', sentence: 'Memory is low. Drop caches to free about 2.1 GiB.',

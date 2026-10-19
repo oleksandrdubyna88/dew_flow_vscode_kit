@@ -202,7 +202,7 @@ createDataTable(doc, {
   reveal: { header: 'Command line', button: (row) => `Show the command line of ${row.program}`, onReveal: (index, request) => post({ type: 'reveal', index, request }), waitingText: 'Waiting…' }, // optional
   emptyText: 'No process matches.',                  // optional, English default
   sort: { key: 'held', direction: 'descending' },    // optional initial sort
-}) → { root, setRows(rows), reveal(index, text, request) → boolean, sortBy(key, direction), filter(query), order() }
+}) → { root, setRows(rows), reveal(index, text, request) → boolean, sortBy(key, direction), filter(query), order(), dispose() }
 ```
 
 - **Values and formats are the consumer's.** `value(row)` is `string | number | null` and is what sorts;
@@ -231,8 +231,9 @@ createDataTable(doc, {
   (no throw: a slow host reply must not crash the page). `setRows` drops every revealed text AND every pending request —
   a late reply for the old row 3 never lands on the new row 3. A revealed text is searchable like any shown text, until
   `setRows` drops it.
+- **A late reply is never an error** (security round, 2026-10-19): `reveal(index, text, request)` answers `false` and changes nothing for a row that is gone because `setRows` shrank the rows, a request that is not current, and any reply after `dispose()`. The `TypeError`s are the programmer errors only: no reveal column, an index that is not a whole number of 0 or more, a text or a request that is not a string. `setRows` is all or nothing: the new row views are built first (a consumer's `value()`/`format()` can throw there) and only then replace the old ones, so a throw leaves rows, revealed texts and pending requests exactly as they were. `dispose()` drops the pending requests, makes `reveal` answer `false`, makes a click on a reveal button tell nobody and `setRows`/`sortBy`/`filter` no-ops. The only reset of a waiting row is `setRows` (or `dispose`); a host that cannot answer answers `reveal(index, 'not available', request)`; there is no `cancel()`. The `button(row)` text is in the page before any reveal: never the hidden value.
 - Refused with a `TypeError`: no columns, a repeated or malformed key, an empty header or label, a
-  `sort.key` that is not a sortable column, `reveal(index, …)` outside the rows or without a reveal column, a
+  `sort.key` that is not a sortable column, `reveal(index, …)` without a reveal column or with an index that is not a whole number of 0 or more (an index with no row NOW is a late reply: `false`), a
   non-string revealed text, a `filter(query)` whose query is not a string.
 
 ### 4.6a `DataTable` fits its box — never a horizontal scroll (the owner, 2026-10-15)
@@ -668,3 +669,11 @@ concrete version in POST_DEPLOY's instruction (the stamp stays concrete).
 
 13. A reveal reply carries a REQUEST TOKEN: `onReveal(index, request)` hands the consumer an opaque id (`<generation>:<n>`, unique per click for the life of the table, no row data) and `reveal(index, text, request) → boolean` applies only for the row's CURRENT pending request, then spends it. A missing, unknown, older, spent, or pre-`setRows` request answers `false`; this closes the hole where, with a Set of indexes, the FIRST reply was accepted after the SAME row was clicked again. A request that is not a string is a `TypeError`; the existing refusals still come first.
 14. The pressed button says it waits: its text becomes `Waiting…` (`reveal.waitingText` overrides it), it gains `kit-table__reveal--pending` (a muted rule in `components.css`), and a click on a waiting button does nothing, so `onReveal` is told once. The revealed text replaces it; `setRows` resets it. The gallery's `revealed` case now shows one revealed row and one waiting row.
+
+**Security round, 2026-10-19 (Fable: do not ship on ea7b1ec) — as built.**
+
+- **D1.** A late reply after `setRows` shrank the rows threw `there is no row N`, against the contract. `reveal` now keeps only programmer-error `TypeError`s (no reveal column, an index that is not a whole number of 0 or more, a non-string text or request); a missing row or a request that is not current answers `false`. Red first on both documents; break-it: the old check order.
+- **H1.** `setRows` is all or nothing: the new views are built first, then rows, views, generation and pending are swapped and the tbody cleared; a throwing `value()`/`format()` leaves the table exactly as it was (revealed secrets and pending requests included). A `countText` that throws still throws after the swap (it runs in the repaint). Break-it: the old order.
+- **H2.** `dispose()` on the view: pending requests dropped, `reveal` answers `false`, a reveal click tells nobody, `setRows`/`sortBy`/`filter` are no-ops (my choice, so a late poll after the panel closed cannot touch the table), safe twice. Wrong arguments are still `TypeError`s. `dispose` is a method of the returned view, so `exports.test.ts` needed no change.
+- **H3 (doc).** README and the d.ts: the only reset of a waiting row is `setRows` (or `dispose`); a host that cannot answer answers `reveal(index, 'not available', request)`; no `cancel()`.
+- **H4 (doc).** The `button(row)` text is in the page before any reveal: never the hidden value (d.ts and README).

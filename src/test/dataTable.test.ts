@@ -305,6 +305,69 @@ onEveryDocument(<E extends KitElement<E>>(make: () => Driver<E>, name: string) =
       assert.equal(root.all('button.kit-table__reveal--pending').length, 1, 'no waiting button in the case');
     });
 
+    test('a late reply after setRows SHRANK the rows answers false - it never throws "there is no row" - and no secret reaches the DOM', () => {
+      const driver = make();
+      const log: unknown[][] = [];
+      const view = createDataTable(driver.doc, options({}, log));
+      const root = driver.attach(view.root);
+      const request = ask(driver, root, 3, log);
+      view.setRows(ROWS.slice(0, 2));
+      assert.equal(view.reveal(3, 'SECRET-late', request), false, 'a reply for a row that is gone must answer false');
+      assert.equal(view.reveal(7, 'SECRET-never-there', 'x:1'), false, 'a reply for a row that never existed must answer false');
+      assert.ok(!root.text.includes('SECRET'), 'a late reply reached the DOM');
+      assert.equal(root.all('tr.kit-table__row').length, 2);
+    });
+
+    /** Columns whose `value()` blows up for the row with pid 666 - what a consumer's own code can do to a `setRows`. */
+    function fragileColumns(): DataTableOptions<Proc>['columns'] {
+      return [
+        { key: 'pid', header: 'PID', value: (row) => { if (row.pid === 666) { throw new Error('value() blew up'); } return row.pid; }, align: 'end' },
+        { key: 'program', header: 'Program', value: (row) => row.program },
+      ];
+    }
+
+    test('setRows is all-or-nothing: a value() that throws for a NEW row leaves the table exactly as it was - rows, revealed text, pending requests, sort - and an old secret does not come back or get lost', () => {
+      const driver = make();
+      const log: unknown[][] = [];
+      const view = createDataTable(driver.doc, options({ columns: fragileColumns() }, log));
+      const root = driver.attach(view.root);
+      const revealedRequest = ask(driver, root, 2, log);
+      assert.equal(view.reveal(2, ROWS[2]?.secret ?? '', revealedRequest), true);
+      const waitingRequest = ask(driver, root, 1, log);
+      view.sortBy('program', 'descending');
+      const before = programs(root);
+      assert.throws(() => { view.setRows([...ROWS, { pid: 666, program: 'boom', held: 1, secret: 'SECRET-boom' }]); }, /value\(\) blew up/);
+      assert.equal(root.all('tr.kit-table__row').length, 4, 'a failed setRows emptied or changed the table');
+      assert.deepEqual(programs(root), before, 'a failed setRows reordered the table');
+      assert.equal(root.all('tr.kit-table__row').filter((row) => row.text.includes('SECRET-dotnet build ccc')).length, 1, 'the revealed secret was lost');
+      assert.ok(!root.text.includes('SECRET-boom'));
+      view.sortBy('program', 'ascending');
+      assert.equal(root.all('tr.kit-table__row').filter((row) => row.text.includes('SECRET')).length, 1, 'a later repaint brought a secret back or lost it');
+      assert.equal(view.reveal(1, 'SECRET-claude', waitingRequest), true, 'a failed setRows dropped a pending request');
+    });
+
+    test('dispose(): pending requests are dropped, reveal answers false without a throw or a DOM change, a click on a reveal button tells nobody, setRows/sortBy/filter do nothing - and a wrong argument is still a TypeError', () => {
+      const driver = make();
+      const log: unknown[][] = [];
+      const view = createDataTable(driver.doc, options({}, log));
+      const root = driver.attach(view.root);
+      const request = ask(driver, root, 2, log);
+      view.dispose();
+      assert.equal(view.reveal(2, 'SECRET-after-dispose', request), false, 'a reply after dispose was applied');
+      assert.ok(!root.text.includes('SECRET'), 'a reply after dispose reached the DOM');
+      const asked = log.length;
+      driver.click(root.one('tr[data-kit-row="0"]').one('button[data-kit-reveal]'));
+      assert.equal(log.length, asked, 'a click on a reveal button after dispose told the consumer');
+      const order = programs(root);
+      view.setRows(ROWS.map((row) => ({ ...row, program: `${row.program}2` })));
+      view.sortBy('pid', 'descending');
+      view.filter('zzz');
+      assert.deepEqual(programs(root), order, 'setRows, sortBy or filter changed a disposed table');
+      assert.deepEqual(view.order(), [0, 1, 2, 3]);
+      view.dispose();
+      assert.throws(() => { view.reveal(0, 7 as never, 'r'); }, /must be a string, got number/);
+    });
+
     test('filter(query) refuses a non-string naming the type; the search box still passes its string', () => {
       const driver = make();
       const view = createDataTable(driver.doc, options());
@@ -374,8 +437,10 @@ onEveryDocument(<E extends KitElement<E>>(make: () => Driver<E>, name: string) =
         assert.throws(() => createDataTable(driver.doc, { ...base, ...overrides }), (error: unknown) => error instanceof TypeError && message.test(error.message), String(message));
       }
       const view = createDataTable(driver.doc, base);
-      assert.throws(() => { view.reveal(4, 'x', 'r'); }, /there is no row 4; the rows are 0 to 3/);
-      assert.throws(() => { view.reveal(1.5, 'x', 'r'); }, /there is no row 1.5/);
+      assert.equal(view.reveal(4, 'x', 'r'), false, 'a reply for a row that is not there is a late reply: false, never a throw');
+      assert.throws(() => { view.reveal(1.5, 'x', 'r'); }, /the index must be a whole number, 0 or more, got 1.5/);
+      assert.throws(() => { view.reveal(-1, 'x', 'r'); }, /the index must be a whole number, 0 or more, got -1/);
+      assert.throws(() => { view.reveal(Number.NaN, 'x', 'r'); }, /the index must be a whole number, 0 or more, got NaN/);
       assert.throws(() => { view.reveal(0, 7 as never, 'r'); }, /must be a string, got number/);
       assert.throws(() => { view.reveal(0, 'x', 7 as never); }, /the request must be a string, got number/);
       const { reveal: _reveal, ...withoutReveal } = base;

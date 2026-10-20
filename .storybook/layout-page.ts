@@ -1,7 +1,7 @@
 import { GALLERY } from '../src/test/gallery';
 
 /**
- * The page `scripts/layout-check.mjs` loads into headless Chrome (`todo/PLAN_kit_components_storybook.md` §4.6a): every
+ * The page `scripts/layout-check.mjs` loads into headless Chrome (`research/PLAN_kit_components_storybook.md` §4.6a): every
  * DOM case of the gallery — the one list the Storybook, axe and the stylesheet check also read — rendered twice, once
  * in the page and once inside the gallery's deliberately narrow box, plus a probe that says where a box does not fit.
  * Bundled for the browser by the script's own esbuild call; story-only code, it ships nowhere.

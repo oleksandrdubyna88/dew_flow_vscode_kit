@@ -165,7 +165,7 @@ test('the closure walk reads EVERY run-time import shape — a side-effect impor
 });
 
 // ---------------------------------------------------------------------------------------------------
-// The components entry (`todo/PLAN_kit_components_storybook.md` §4.2): it is bundled by a consumer FOR THE BROWSER,
+// The components entry (`research/PLAN_kit_components_storybook.md` §4.2): it is bundled by a consumer FOR THE BROWSER,
 // so its whole run-time closure must stay inside `src/components/` — no host module, no `node:`, nothing of the root
 // entry (which reaches `nonce.ts`). The root entry keeps reaching `nonce.ts`, which is the known instance above.
 // ---------------------------------------------------------------------------------------------------

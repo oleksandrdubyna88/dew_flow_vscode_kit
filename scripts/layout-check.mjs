@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * The layout check: no table scrolls sideways, in a REAL browser (`todo/PLAN_kit_components_storybook.md` §4.6a).
+ * The layout check: no table scrolls sideways, in a REAL browser (`research/PLAN_kit_components_storybook.md` §4.6a).
  *
  * jsdom has no layout, so "a table fits its box" cannot be asserted there. This script renders every DOM case of the
  * gallery (`src/test/gallery`) with `components.css`, the four theme fixtures and the gallery's frame CSS into one

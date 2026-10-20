@@ -1,13 +1,13 @@
 # PLAN — kit 0.2.0: Tabs, DataTable, RecommendationCard, theme tokens, and a Storybook
 
-> Status: **in progress, 2026-10-18** — built on `feat/kit-k1-components`, rebased onto `main` @ `d8a1e2d` (kit 0.1.1, published to GitHub Packages on 2026-10-17): the components, the stylesheet, the Storybook, the axe and contrast checks, the consumer fixture's webview entry, and §4.6a (the owner's review of the E18 mockup, 2026-10-15: no table ever scrolls sideways — items 25–28, the layout check, as built in §11). **Open:** the code round, the merge, and the 0.2.0 release (release-please's pull request; §7). Plan round `proceed` 2026-10-12. Scope: a new `src/components/` module with its
+> Status: **IMPLEMENTED, 2026-10-20.** Merged as PR #9 (655df4d) and released as 0.2.0 on GitHub Packages by run 39481672054 (its consume job installed and ran the published 0.2.0, the webview bundle with its CSS included). Four coai code rounds and an independent security review of the reveal contract (DO NOT SHIP on ea7b1ec — D1; SHIP on 298fa8d and on 87a742f) are recorded in §11. Deviations from the plan as first written: the reveal contract became `onReveal(index, request)` → `reveal(index, text, request) → boolean` with `dispose()` and all-or-nothing `setRows`; the layout check's teardown lives in scripts/lib/cleanup.mjs; see §11. Open tail: wsl_care's E18 W0 (its harness widening, and the host echoing the request id), local-cpu-budget for every entry point ([PLAN_local_cpu_budget.md](../todo/PLAN_local_cpu_budget.md)), and branch protection on main (the owner's setting, README item 5). Scope: a new `src/components/` module with its
 > own package entry (`./components`) and stylesheet (`./components.css`), a Storybook (devDependencies only),
 > axe and contrast checks in CI, and the docs. This is story **E18.K1** of wsl_care's epic E18
 > (`wsl_care · todo/PLAN_disk_health.md` §3.4 and its E18 table, issue oleksandrdubyna88/wsl_care#87),
 > started on the owner's go of 2026-10-12.
 >
 > Paired plans: `wsl_care · todo/PLAN_disk_health.md` §3.4 (the same table as §2 below, written there first) and
-> this repository's [PLAN_extract_the_kit.md](PLAN_extract_the_kit.md) (0.1.0, which never reached a registry; 0.1.1 is the first published version), the first step of the order.
+> this repository's [PLAN_extract_the_kit.md](../todo/PLAN_extract_the_kit.md) (0.1.0, which never reached a registry; 0.1.1 is the first published version), the first step of the order.
 
 ## 1. Goal
 
@@ -45,7 +45,7 @@ words: every label, unit, number format, sentence and revealed value is the cons
 |---|---|---|
 | `Tabs`, `DataTable`, `RecommendationCard`, theme tokens; the display controls and Help viewer (exist) | the components, their CSS (classes only), their tests, axe checks, the Storybook (every component × state × light / dark / high contrast × three font sizes), release 0.2.0 | nothing of the components — it consumes them |
 | the data shown, the units, the redaction, the reveal, the recommendation's words | nothing (consumer-supplied callbacks and strings) | everything (E18.W1–W3; the daemon makes the words) |
-| the order | 0.1.1 on GitHub Packages (the first publish; its E3, [PLAN_extract_the_kit.md](PLAN_extract_the_kit.md)) → K1 (this plan) → 0.2.0 on GitHub Packages | W0 starts only after 0.2.0 is published (or the kit's `pack-and-consume` tarball as a bridge, never committed) |
+| the order | 0.1.1 on GitHub Packages (the first publish; its E3, [PLAN_extract_the_kit.md](../todo/PLAN_extract_the_kit.md)) → K1 (this plan) → 0.2.0 on GitHub Packages | W0 starts only after 0.2.0 is published (or the kit's `pack-and-consume` tarball as a bridge, never committed) |
 | disjoint | no wsl_care-specific component, no `vscode` API in the webview components | no copy of a kit component, ever (`common.reuse-first`) |
 
 The table is complete, not a list of examples: anything not in the first column's left cell is wsl_care's.
@@ -496,7 +496,7 @@ One reviewer (codex) of one answered; verdict `proceed`, gating count 1 of thres
 ## 6. Build order
 
 1. **This plan** (commit 1), `todo/README.md`'s row, and the boundary written into
-   [PLAN_extract_the_kit.md](PLAN_extract_the_kit.md) (§2's table and the release decision, §7).
+   [PLAN_extract_the_kit.md](../todo/PLAN_extract_the_kit.md) (§2's table and the release decision, §7).
 2. The gate's plan round (`review_plan`) until `proceed`.
 3. Dependencies (`npm install --save-dev --save-exact`), `npm audit`, licences recorded (§4.11).
 4. `src/components/dom.ts` + `src/test/fakeDom.ts` + its contract tests (RED → green).
@@ -525,7 +525,7 @@ kept because it explains the footer: on 2026-10-12 npmjs answered 404 for the pa
 was `{}` with `initial-version: 0.1.0`, and the owner's one-time npm setup (an `npm` environment holding `NPM_TOKEN`) was
 not done. That route is gone: 0.1.0 was tagged and its publish to npmjs failed (E403), so **0.1.0 never reached any
 registry**; the package now goes to **GitHub Packages** (`publishConfig.registry`, the job's own `GITHUB_TOKEN`, an
-artifact attestation — [research/PLAN_publish_to_github_packages.md](../research/PLAN_publish_to_github_packages.md)) and
+artifact attestation — [research/PLAN_publish_to_github_packages.md](PLAN_publish_to_github_packages.md)) and
 **0.1.1 was published there on 2026-10-17**. There is no npm token and no npmjs setup in the order any more.
 
 As of 2026-10-18: `.release-please-manifest.json` is `{".":"0.1.1"}` and `package.json` says `0.1.1`, so release-please
@@ -565,21 +565,21 @@ None persistent. A `DataTable` holds the rows it was given and, at most, one rev
 
 ## 10. Definition of Done
 
-- [ ] The three components, the status tones and the stylesheet exist with the API of §4; nothing in them uses
-      `innerHTML`, `style` or an inline handler; no domain word.
-- [ ] `./components` and `./components.css` resolve from the PACKED tarball: the consumer fixture's webview entry
-      type-checks with a real `document` and bundles for the browser with its CSS.
-- [ ] Every RED test of §5.2 was seen failing for the real reason, then green; every break-it of §5.3 turned the
-      right test red; the whole suite green on both CI legs.
-- [ ] Storybook builds; every component × state × theme × size is in it; axe zero violations over every gallery
-      case in CI; contrast checked.
-- [ ] No table scrolls sideways (§4.6a): the layout check is green in CI over every case × width × theme × size,
-      and its companion turns red on a planted `min-width`.
-- [ ] `dependencies` absent; `npm pack --dry-run` lists `dist/` and the bin only; no Storybook file ships.
-- [ ] `research/architecture.md`, `research/module_tests.md` and README describe what shipped.
-- [ ] The release decision of §7 applied at the merge and recorded in both kit plans.
-- [ ] The gate's plan and code rounds reached `proceed`; CodeRabbit's threads answered and resolved; merged.
-- [ ] This plan promoted to `research/` with `IMPLEMENTED <date>` and its deviations.
+- [x] The three components, the status tones and the stylesheet exist with the API of §4; nothing in them uses
+      `innerHTML`, `style` or an inline handler; no domain word. (PR #9; the API's reveal part is as §11 records it.)
+- [x] `./components` and `./components.css` resolve from the PACKED tarball: the consumer fixture's webview entry
+      type-checks with a real `document` and bundles for the browser with its CSS. (pack-and-consume green on both legs of PR #9; release run 39481672054: its consume job ran the same steps against the PUBLISHED 0.2.0.)
+- [x] Every RED test of §5.2 was seen failing for the real reason, then green; every break-it of §5.3 turned the
+      right test red; the whole suite green on both CI legs. (§11 and research/module_tests.md record them; PR #9: build · test on ubuntu and windows SUCCESS.)
+- [x] Storybook builds; every component × state × theme × size is in it; axe zero violations over every gallery
+      case in CI; contrast checked. (PR #9: `storybook build` SUCCESS; axe and contrast are tests of the suite, green on both legs.)
+- [x] No table scrolls sideways (§4.6a): the layout check is green in CI over every case × width × theme × size,
+      and its companion turns red on a planted `min-width`. (Both modes run in CI's `storybook` job, SUCCESS on PR #9.)
+- [x] `dependencies` absent; `npm pack --dry-run` lists `dist/` and the bin only; no Storybook file ships. (`packaging.test.ts`; the release run packed one tarball of 88296 bytes.)
+- [x] `research/architecture.md`, `research/module_tests.md` and README describe what shipped. (Updated in PR #9.)
+- [x] The release decision of §7 applied at the merge and recorded in both kit plans. (The squash commit 655df4d carries `Release-As: 0.2.0`; release-please proposed 0.2.0 in #16 and release run 39481672054 published it.)
+- [x] The gate's plan and code rounds reached `proceed`; CodeRabbit's threads answered and resolved; merged. (Plan round `proceed` 2026-10-12; code rounds recorded in §11; PR #9 had 0 unresolved review threads and merged 2026-10-20.)
+- [x] This plan promoted to `research/` with `IMPLEMENTED <date>` and its deviations. (2026-10-20.)
 
 ## 11. As built (recorded 2026-10-15, on `feat/kit-k1-components`; the sideEffects note of §3 and the §4.6a build)
 

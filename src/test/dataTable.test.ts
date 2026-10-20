@@ -8,7 +8,7 @@ import { onEveryDocument, type DomNode, type Driver } from './domDrivers';
 import { GALLERY } from './gallery';
 
 /**
- * `DataTable`, RUN on the strict fake and on jsdom (`todo/PLAN_kit_components_storybook.md` §5.2, items 7–13): the
+ * `DataTable`, RUN on the strict fake and on jsdom (`research/PLAN_kit_components_storybook.md` §5.2, items 7–13): the
  * headers, the sort and `aria-sort`, absent values, the consumer's formats, the search, the reveal — which tells
  * the consumer an index and nothing else, and never shows a hidden value before the consumer hands it over — and
  * every refusal.

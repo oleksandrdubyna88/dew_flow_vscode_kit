@@ -6,7 +6,7 @@
 > and runs the tarball (E3.S1) and the publishing half — release-please and `release.yml` (E3.S2) — are in
 > the repository, but **nothing is published yet** (0.1.0 never reached a registry; 0.1.1 will be the first publish, to GitHub Packages): the first release waits for the owner's one-time
 > setup (README "Release and rollback"). This file describes what exists and is rewritten as each module
-> lands. Since K1 ([../todo/PLAN_kit_components_storybook.md](../todo/PLAN_kit_components_storybook.md), wsl_care's
+> lands. Since K1 ([PLAN_kit_components_storybook.md](PLAN_kit_components_storybook.md), wsl_care's
 > E18.K1) the package also has the webview components behind a second entry, `./components`, their stylesheet, and
 > a Storybook.
 

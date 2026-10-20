@@ -1,11 +1,9 @@
 # PLAN — no dependency code runs beside the publish credentials: split release.yml's publish job
 
-> Status: **in progress, 2026-10-17** — built on the branch `ci/split-publish-job` (tests H1–H5 RED then GREEN,
-> break-its observed); open: the code round, the merge, and the first real release run, which is the only run
-> that can observe the artifact round trip. Scope: `.github/workflows/release.yml`,
+> Status: **IMPLEMENTED, 2026-10-20.** Merged as PR #15 (d8a1e2d). First real run: release v0.2.0, run 39481672054 — build uploaded the artifact (88296 bytes, release-tarball id 12291318481), publish downloaded it with the matching digest (sha256 96a1799e…), the tarball check printed OK, the attestation was created for the tarball (sha256 1d302505…, attestations/57922836), publish-once decided "publish" and published, verify answered ok (version, integrity, attestation), and consume passed all eight pack-and-consume steps against the published 0.2.0. Deviations: the binary-mode `*name` in the .sha256 is accepted (coordinator, 2026-10-18); the tarball step also refuses a name that is not a plain .tgz and a .sha256 that names another file; H1 also forbids npm/npx/yarn/pnpm inside the check shape and refuses a privileged job that calls a reusable workflow; H4b reads imports with a regex (a computed import() is not seen); artifact retention 30 days. Open tail: the re-run path ("Re-run failed jobs" after a failed publish) has not been observed — no publish has failed since the split. Scope: `.github/workflows/release.yml`,
 > `src/test/releaseWorkflows.test.ts`, README "Release and rollback", POST_DEPLOY.md (where item 5 runs),
 > research/architecture.md, research/module_tests.md. Follows
-> [PLAN_publish_to_github_packages.md](../research/PLAN_publish_to_github_packages.md), whose report named this hardening;
+> [PLAN_publish_to_github_packages.md](PLAN_publish_to_github_packages.md), whose report named this hardening;
 > the coordinator ordered it before 0.2.0.
 
 ## 1. Symptom and goal
@@ -131,7 +129,7 @@ stops the next release at or before its publish, and is fixed forward like any f
 README "Release and rollback": the four jobs and why; "When a publish fails" → re-run FAILED jobs (the artifact is
 re-used, nothing re-packed), never "Re-run all jobs" after a publish. POST_DEPLOY.md: item 5's sentence says the
 `consume` job runs it. research/architecture.md: the release diagram and section. research/module_tests.md: H1-H5.
-[PLAN_publish_to_github_packages.md](../research/PLAN_publish_to_github_packages.md): one line pointing here as the hardening
+[PLAN_publish_to_github_packages.md](PLAN_publish_to_github_packages.md): one line pointing here as the hardening
 it named.
 
 ## 6. Growth surfaces
@@ -161,11 +159,13 @@ release (13 — residual recorded in §4).
 
 ## 8. Definition of Done
 
-- [ ] H1–H5, H1b, H2b, H4b observed RED with the real symptom, then GREEN; every break-it red and restored
-      byte-identical.
-- [ ] `plan-lifecycle.mjs` clean; `todo/README.md` row current; promotion done after the first real release run.
-- [ ] typecheck, lint, the whole suite, actionlint green; numbers in the PR.
-- [ ] No privileged job in any workflow runs dependency code; the build job holds the one pack.
-- [ ] README, POST_DEPLOY.md, research docs updated; the parent plan points here.
-- [ ] Gate: plan round `proceed`, code round resolved; own Opus review.
-- [ ] PR squash-merged with every check green; no release cut by it.
+- [x] H1–H5, H1b, H2b, H4b observed RED with the real symptom, then GREEN; every break-it red and restored
+      byte-identical. (Recorded in research/module_tests.md, the publish-job split section.)
+- [x] `plan-lifecycle.mjs` clean; `todo/README.md` row current; promotion done after the first real release run. (Promoted 2026-10-20, after run 39481672054.)
+- [x] typecheck, lint, the whole suite, actionlint green; numbers in the PR. (PR #15 merged with every check green.)
+- [x] No privileged job in any workflow runs dependency code; the build job holds the one pack. (Observed in run 39481672054: `build` packed and uploaded, `publish` only downloaded, checked, attested and published.)
+- [x] README, POST_DEPLOY.md, research docs updated; the parent plan points here. (research/PLAN_publish_to_github_packages.md links to this plan.)
+- [x] Gate: plan round `good_enough` (coai bf5963e8, all 4 reviewers; applied, recorded in §9), code round `proceed`
+      (12 of 16 reviewers, 4 accepted and fixed, 7 rejected with reasons) and resolved; the judge's own Opus review of
+      the coder's diff before the commit; all recorded in PR #15's description.
+- [x] PR squash-merged with every check green; no release cut by it. (PR #15, d8a1e2d; 0.2.0 was cut later by release-please's own PR #16.)

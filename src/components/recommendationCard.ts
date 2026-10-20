@@ -3,7 +3,7 @@ import { attributes, children, element, type KitDocument, type KitElement } from
 import { checkedTone, toneGlyph, type StatusTone } from './status';
 
 /**
- * `RecommendationCard` — what to do about the worst problem, and why (`todo/PLAN_kit_components_storybook.md` §4.7).
+ * `RecommendationCard` — what to do about the worst problem, and why (`research/PLAN_kit_components_storybook.md` §4.7).
  *
  * <p>A tone glyph (`aria-hidden`) and its WORD, one sentence, ONE button slot, and the evidence. Every word is the
  * consumer's. The slot holds the consumer's own button as given — the kit wires nothing on it, so the action is

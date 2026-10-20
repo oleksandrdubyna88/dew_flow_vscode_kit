@@ -373,7 +373,7 @@ commit are pull requests in those repositories.
 
 ## 7a. The next plan, and its boundary with this one (2026-10-12)
 
-[PLAN_kit_components_storybook.md](PLAN_kit_components_storybook.md) (wsl_care's E18.K1) adds the webview
+[PLAN_kit_components_storybook.md](../research/PLAN_kit_components_storybook.md) (wsl_care's E18.K1) adds the webview
 components — `Tabs`, `DataTable`, `RecommendationCard`, theme tokens — behind a second entry,
 `./components`, with their stylesheet and a Storybook. This plan is the first step of that one's order.
 

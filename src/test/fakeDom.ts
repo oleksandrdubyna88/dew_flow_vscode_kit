@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { KIT_ATTRIBUTE_PREFIXES, KIT_ATTRIBUTES, KIT_EVENTS, KIT_TAGS, type KitDocument, type KitElement, type KitEvent } from '../components/dom';
 
 /**
- * The STRICT fake document the webview components are run against (`todo/PLAN_kit_components_storybook.md` §5.1).
+ * The STRICT fake document the webview components are run against (`research/PLAN_kit_components_storybook.md` §5.1).
  *
  * <p>A component never sees a {@link FakeNode}: it sees a PROXY per node that serves exactly the members the kit's
  * DOM port declares (`components/dom.ts`) and throws, naming the member, on anything else — `innerHTML`, `style`,

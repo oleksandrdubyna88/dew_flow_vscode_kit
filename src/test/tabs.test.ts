@@ -7,7 +7,7 @@ import { createTabs, type TabsOptions } from '../components/tabs';
 import { onEveryDocument, type Driver } from './domDrivers';
 
 /**
- * `Tabs`, RUN on the strict fake and on jsdom (`todo/PLAN_kit_components_storybook.md` §5.2, items 1–6): the WAI-ARIA
+ * `Tabs`, RUN on the strict fake and on jsdom (`research/PLAN_kit_components_storybook.md` §5.2, items 1–6): the WAI-ARIA
  * wiring, the roving tabindex, the keys, the click, the status words, and every refusal at the door.
  */
 

@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { colour, COMPONENTS_CSS, over, ratio, readCss, resolve, THEMES_CSS, themes, tokenBlock, type Rgba } from './cssTokens';
 
 /**
- * The theme tokens' contrast under VS Code's four built-in reference themes (`todo/PLAN_kit_components_storybook.md`
+ * The theme tokens' contrast under VS Code's four built-in reference themes (`research/PLAN_kit_components_storybook.md`
  * §5.4). The values are `.storybook/vscode-themes.css` — resolved from VS Code's own sources, a variable VS Code
  * leaves unset ABSENT there, so a token's `var()` fallback is what paints exactly where it would in a webview.
  *

@@ -35,7 +35,7 @@ export interface JsdomWindow {
 }
 
 /**
- * One behaviour suite, two documents (`todo/PLAN_kit_components_storybook.md` §5.1): every component test runs on the
+ * One behaviour suite, two documents (`research/PLAN_kit_components_storybook.md` §5.1): every component test runs on the
  * STRICT fake (`fakeDom.ts` — refuses whatever the kit's DOM port does not declare) and on jsdom (a real DOM
  * implementation — catches a behaviour only the fake allows). A test reads the page through {@link DomNode} and acts
  * through the driver, so it is written once and cannot know which document it runs on. Selectors are the fake's

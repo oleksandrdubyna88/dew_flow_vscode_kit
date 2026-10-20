@@ -14,7 +14,7 @@ import type { HelpArticle, HelpBody, HelpLanguage } from '../../help/types';
 import { spyOn } from './spy';
 
 /**
- * THE GALLERY — every component × state, once (`todo/PLAN_kit_components_storybook.md` §4.9). One source of truth
+ * THE GALLERY — every component × state, once (`research/PLAN_kit_components_storybook.md` §4.9). One source of truth
  * read three ways: the Storybook shows each case as a story (`stories/*.stories.ts`, held equal to this list by
  * `src/test/stories.test.ts`), `src/test/axe.test.ts` runs axe over each, and `src/test/componentsCss.test.ts`
  * checks every class each one renders has a rule. Test code: it never ships (`tsconfig.build.json` leaves
@@ -172,7 +172,7 @@ const TABLE: readonly GalleryCase[] = [
   },
   { kind: 'dom', id: 'plain', title: 'No search, no reveal', render: (doc) => createDataTable(doc, { label: 'Samples', columns: tableOptions().columns, rows: SAMPLES }).root },
   { kind: 'dom', id: 'empty', title: 'No rows', render: (doc) => createDataTable(doc, tableOptions({ rows: [] })).root },
-  // The cases that would break "a table fits its box" (todo/PLAN_kit_components_storybook.md §4.6a, §5.2 item 27) —
+  // The cases that would break "a table fits its box" (research/PLAN_kit_components_storybook.md §4.6a, §5.2 item 27) —
   // `scripts/layout-check.mjs` renders each at three widths, four themes and three sizes, in the page and in a narrow box.
   { kind: 'dom', id: 'eight-columns', title: 'Eight columns in an 18em box', render: (doc) => children(element(doc, 'div', 'gallery-narrow'), createDataTable(doc, wideOptions()).root) },
   { kind: 'dom', id: 'unbreakable-cell', title: 'A long path with no space in a cell', render: (doc) => createDataTable(doc, tableOptions({ rows: [{ name: LONG_PATH, size: 1_048_576, count: 1 }, ...SAMPLES] })).root },

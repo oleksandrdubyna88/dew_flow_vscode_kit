@@ -1,6 +1,6 @@
 {
   "name": "@oleksandrdubyna88/vscode-webview-kit",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Shared webview building blocks for the dew_flow VS Code extensions: a help page with languages and stale-translation detection, the ± text size and ± text tone controls with their host halves, the setting-write reporter, the HTML/JSON escapers a webview page needs, and webview components (tabs, a data table, a recommendation card) with theme tokens.",
   "license": "MIT",
   "repository": {

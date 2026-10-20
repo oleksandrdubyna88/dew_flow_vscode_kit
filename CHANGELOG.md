@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/oleksandrdubyna88/dew_flow_vscode_kit/compare/v0.1.1...v0.2.0) (2026-10-20)
+
+
+### Features
+
+* **kit:** K1 — Tabs, DataTable, RecommendationCard, Storybook, and a DataTable that never scrolls sideways ([#9](https://github.com/oleksandrdubyna88/dew_flow_vscode_kit/issues/9)) ([655df4d](https://github.com/oleksandrdubyna88/dew_flow_vscode_kit/commit/655df4de9ca1737c8cb6fcf9c3b75d2e9198800f))
+
 ## [0.1.1](https://github.com/oleksandrdubyna88/dew_flow_vscode_kit/compare/v0.1.0...v0.1.1) (2026-10-17)
 
 

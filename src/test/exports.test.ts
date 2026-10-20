@@ -91,6 +91,62 @@ test('the exported type names, read from src/index.ts, are exactly the 0.1.0 typ
   assert.deepEqual(sorted(types), sorted(TYPES));
 });
 
+// ---- the components entry, `./components` (todo/PLAN_kit_components_storybook.md §4.2) ----------------------------
+
+const COMPONENT_VALUES: readonly string[] = ['STATUS_TONES', 'createTabs', 'createDataTable', 'createRecommendationCard'];
+
+const COMPONENT_TYPES: readonly string[] = [
+  'KitDocument', 'KitElement', 'KitEvent', 'KitEventType', 'KitTag',
+  'StatusMark', 'StatusTone',
+  'TabSpec', 'TabsOptions', 'TabsView',
+  'CellValue', 'SortDirection',
+  'DataColumn', 'DataTableOptions', 'DataTableReveal', 'DataTableSort', 'DataTableView', 'StackWidth',
+  'RecommendationOptions',
+];
+
+/** Names inside the components that must NOT be public: the checks, the DOM helpers, the order's internals. */
+const COMPONENT_INTERNAL: readonly string[] = [
+  'KIT_TAGS', 'KIT_ATTRIBUTES', 'KIT_EVENTS', 'element', 'attributes', 'children', 'valueOf', 'writeValue',
+  'text', 'id', 'oneOf', 'checkedMark', 'markElement', 'toneGlyph', 'sortedIndexes', 'compareCells', 'matchesQuery', 'STACK_WIDTHS',
+];
+
+/** The type names an index file's export lists spell — both `export type { … }` and `type X` entries. */
+function typeNames(file: string): string[] {
+  const source = fs.readFileSync(path.resolve(__dirname, '..', '..', file), 'utf8');
+  const lists = [...source.matchAll(/export\s+(type\s+)?\{([^}]*)\}\s+from/g)];
+  assert.ok(lists.length > 0, `no export lists found in ${file}`);
+
+  return lists.flatMap(([, typeOnly, body]) =>
+    (body ?? '').split(',').map((entry) => entry.trim()).filter((entry) => entry.length > 0).flatMap((entry) => {
+      const named = /^type\s+(\w+)$/.exec(entry);
+      if (named !== null) {
+        return [named[1] ?? ''];
+      }
+
+      return typeOnly === undefined ? [] : [entry];
+    }),
+  );
+}
+
+test('the components entry exports exactly its values, and nothing internal', async () => {
+  const components = (await import('../components/index')) as Record<string, unknown>;
+  assert.deepEqual(sorted(Object.keys(components)), sorted(COMPONENT_VALUES));
+  for (const name of COMPONENT_INTERNAL) {
+    // Own members only: valueOf is on every object's prototype, and a module namespace is an object.
+    assert.equal(Object.hasOwn(components, name), false, `${name} is internal and leaked into the components entry`);
+  }
+});
+
+test('the components entry\'s type names, read from src/components/index.ts, are exactly its types', () => {
+  assert.deepEqual(sorted(typeNames('src/components/index.ts')), sorted(COMPONENT_TYPES));
+});
+
+test('the root entry exposes none of the components — a host bundle never carries them, a webview bundle never needs the root', () => {
+  for (const name of [...COMPONENT_VALUES, 'KitDocument']) {
+    assert.equal(name in kit, false, `${name} is in the root entry`);
+  }
+});
+
 test('the lists are what the index spells: every export list in src/index.ts is one of the two, and nothing is listed twice', () => {
   assert.equal(new Set(VALUES).size, VALUES.length, 'a value is listed twice');
   assert.equal(new Set(TYPES).size, TYPES.length, 'a type is listed twice');

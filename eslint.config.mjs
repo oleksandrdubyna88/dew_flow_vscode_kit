@@ -14,7 +14,7 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['out/**', 'dist/**', 'node_modules/**', '.agents/**', '.claude/hooks/**'],
+    ignores: ['out/**', 'dist/**', 'node_modules/**', '.agents/**', '.claude/hooks/**', 'storybook-static/**'],
   },
   {
     // A disable that has stopped being needed is an exemption nobody granted.

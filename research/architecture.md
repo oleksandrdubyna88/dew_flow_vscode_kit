@@ -6,7 +6,9 @@
 > and runs the tarball (E3.S1) and the publishing half — release-please and `release.yml` (E3.S2) — are in
 > the repository, but **nothing is published yet** (0.1.0 never reached a registry; 0.1.1 will be the first publish, to GitHub Packages): the first release waits for the owner's one-time
 > setup (README "Release and rollback"). This file describes what exists and is rewritten as each module
-> lands.
+> lands. Since K1 ([../todo/PLAN_kit_components_storybook.md](../todo/PLAN_kit_components_storybook.md), wsl_care's
+> E18.K1) the package also has the webview components behind a second entry, `./components`, their stylesheet, and
+> a Storybook.
 
 ## What this package is
 
@@ -32,6 +34,9 @@ while the help panel — the host half that mints a nonce per render — must.
 | `help` — page, panel | `page.ts` (`renderHelpPage`, `searchIndex`, `articleHtml`, `helpCsp`), `pageText.ts` (chrome, section labels, `bodyHtml`, the notes), `pageScript.ts` (the one `<script>`), `messages.ts` (`readHelpMessage`), `panel.ts` (`createHelpPanel`, `HelpPanelPort`) | landed (E2.S3) |
 | package entry | `src/index.ts` — the whole 0.1.0 API: `display`, `settings`, `text`, `webview`, the help catalog, page, message reader and panel; pinned name by name by `src/test/exports.test.ts` | landed (E2.S3) |
 | bin | `scripts/help-digests.mjs`, shipped as `vscode-webview-kit-help-digests` (`package.json` `bin` and `files`) | landed (E2.S2; shipped E2.S3) |
+| `components` (entry `./components`) | `dom.ts` (the DOM port: `KitDocument`, `KitElement`, the tag / attribute / event surface), `checks.ts` (the door's refusals), `status.ts` (`STATUS_TONES`, a mark = glyph + word), `tabs.ts` (`createTabs`), `tableOrder.ts` (sort and filter, pure), `dataTable.ts` (`createDataTable`), `recommendationCard.ts` (`createRecommendationCard`), `index.ts` (the entry), `components.css` (theme tokens and rules, shipped as `./components.css`) | landed (K1) |
+| Storybook | `.storybook/` (`main.ts`, `preview.ts` with the theme and size toolbars, `vscode-themes.css` — VS Code's resolved reference-theme values, `gallery.css`), `stories/*.stories.ts` over `src/test/gallery/` | landed (K1); a devDependency, never shipped |
+| layout check | `scripts/layout-check.mjs` (headless Chrome over the DevTools protocol), `.storybook/layout-page.ts` (the page it loads: the gallery's DOM cases twice, plus the overflow probe) | landed (K1, 4.6a); a development check, never shipped |
 
 ## The display module
 
@@ -296,6 +301,120 @@ the consumer's display host alone; `render` and `handle` throw afterwards, and a
 **Growth** (plan §5): one panel holds four hooks and one write queue as long as the language writes not yet
 done; a closed panel holds nothing.
 
+## The components module — Tabs, DataTable, RecommendationCard (K1)
+
+The first part of the kit that runs INSIDE a webview as code rather than as a page script string: the consumer
+bundles `./components` for the browser into its own webview script, and each component builds DOM there from the
+data its page was posted. They exist for wsl_care's full view (its E18.W1), whose page CSP is nonce-only for scripts
+AND styles and whose page harness refuses `innerHTML`, `style` and anything it does not model — so a component
+creates elements, writes text with `textContent`, sets attributes from a closed list, and paints with classes alone.
+
+```mermaid
+flowchart TB
+  subgraph consumer["Consumer webview script (bundled by esbuild for the browser)"]
+    page["its page: data posted by its host"]
+    doc["the real document"]
+  end
+  subgraph kit["Kit — src/components, nothing outside it, no vscode, no node:"]
+    port["dom.ts: KitDocument / KitElement — the port, F-bounded so a Document fits with no cast"]
+    tabs["createTabs: tablist / tab / tabpanel, roving tabindex, arrows Home End, a status mark per tab"]
+    table["createDataTable: sort buttons with aria-sort, search over shown text, reveal by row index"]
+    order["tableOrder.ts: pure order and filter, absent last"]
+    card["createRecommendationCard: glyph + word, sentence, one consumer button, evidence"]
+    status["status.ts: five tones, a glyph and a WORD each"]
+    css["components.css: --kit-* tokens on --vscode-* variables, classes only; .kit-table is a size container: stacked rows below 30 / 40 / 60em of the TABLE"]
+  end
+  host["consumer's extension host"]
+  page --> tabs
+  page --> table
+  page --> card
+  doc --> port
+  port --> tabs
+  port --> table
+  port --> card
+  table --> order
+  tabs --> status
+  table -- "onReveal(index, request) — an index and an opaque request id, nothing of the row" --> page
+  page -- "postMessage reveal index" --> host
+  host -- "the revealed text" --> page
+  page -- "table.reveal(index, text, request)" --> table
+  css -. "linked under the page nonce" .- page
+```
+
+**The port** (`dom.ts`). A component takes its document as an argument: `KitDocument<E>` with `createElement` over a
+closed tag list, and `KitElement<E>` with `className`, `textContent`, `hidden`, `setAttribute`, `appendChild`,
+`addEventListener` (`click`, `keydown`, `input`) and `focus`. `E` is the element type itself, so the real `document`
+satisfies the port and the components hand back the page's own `HTMLElement` — measured before the plan and held by
+the consumer fixture's webview entry, which is type-checked against the installed `.d.ts` with the DOM library. The
+kit itself still compiles without the DOM library (`tsconfig.json`), so no component can reach a browser global by
+accident. `KIT_TAGS`, `KIT_ATTRIBUTES` and `KIT_EVENTS` are the surface as data — what a consumer's strict harness has
+to model, and what the kit's own strict fake enforces.
+
+**Every word and number is the consumer's.** Labels, units, number formats, sentences, the reveal's text: a column's
+`value` sorts and its `format` shows; absence (`null`, or `NaN`) shows as `—` and sorts last both ways
+(`common.coding-style`). The kit's own English is three defaults a consumer can replace: `Showing 3 of 10 rows.`,
+`No rows match.`, `Show`, and `Evidence`.
+
+**The reveal** tells the consumer a row's index in the rows it gave — after a sort or a search, still that index — and
+nothing else; the hidden text enters the DOM only through `reveal(index, text)`, into that row's cell alone and only for a row a person
+asked about in the current rows (otherwise it answers `false` and changes nothing), and `setRows` drops every revealed text and every
+pending request; a late reply (the row is gone, the request is not current, the table was disposed) answers `false` and is never an error, `setRows` is all or nothing, and `dispose()` ends the table's talking to the consumer. **Tabs** select on a person's click or key (arrows wrap; Home, End), tell
+`onSelect` only then, and take a status mark (a tone AND its word) live through `setStatus`. **The card** places ONE
+button the consumer built — anything but a `BUTTON` is refused — and wires nothing on it.
+
+**Fit, never scroll** (K1 4.6a, the owner's rule of 2026-10-15). A table is never a scroll container and never wider
+than its box. `.kit-table` is a CSS size container (`container: kit-table / inline-size`), so every width rule reads the
+TABLE's own width, not the window's: a table in a narrow card adapts at 1920 px too. Columns shrink and wrap — a header
+breaks only between words (`overflow-wrap: break-word`), a cell anywhere as a last resort (`anywhere`), an end-aligned
+cell stays on one line only above 30em. The `stack` option (`'narrow' | 'medium' | 'wide' | 'never'`, default
+`'medium'`, an unknown value refused naming the four) puts `kit-table--stack-<value>` on the `table` element — on the
+table and not on the root, because a container query styles the container's descendants only. Below 30 / 40 / 60em
+each row becomes "label: value" lines: every body cell carries `data-kit-label` (its column's header; the reveal
+cell its header; the empty-result row none) and the stylesheet draws it with `td[data-kit-label]::before`; the header
+row becomes a wrapped row of the sortable headers' buttons after a CSS-drawn `Sort by`, so click / Enter / Space still
+sort; a header with no sort button is hidden there. `stack: 'never'` has no block: a table at every width. Hiding
+columns is deliberately not offered — it would hide data the consumer chose to show.
+
+`scripts/layout-check.mjs` proves it where it can be proved, in a browser: it bundles `.storybook/layout-page.ts` (esbuild,
+already a devDependency) for the browser, writes one static page with `components.css`, the theme fixture and the
+gallery frame CSS into a git-ignored `testsToDelete-layout-check/`, drives headless Chrome with Node's own `WebSocket`
+(`Emulation.setDeviceMetricsOverride` sets the viewport; `--window-size` cannot go under ~500 px), and at 300 / 1280 /
+1920 px × four themes × three sizes asks the page's probe about every DOM case rendered in the page and in an 18em box.
+The matrix is 26 cases × 2 × 36 = 1872 case-states in 36 page states. CI runs it and its `--companion` (two planted
+defects in COPIES of the stylesheet that must go RED naming a DataTable case) in the `storybook` job. `layoutCheck.test.ts`
+holds, without a browser, what the check needs: the gallery's breaking cases, CI's steps, and that no browser is exit 3.
+
+**The door.** Each component checks its options once (`checks.ts`) and refuses a mistake with a `TypeError` naming
+what, where and what would be accepted — an empty label, a repeated or malformed id or key, an unknown tone, a sort
+on a column that does not sort, a reveal outside the rows. Keys are read through a `Map`, so a key named `toString`
+finds nothing.
+
+**Theme tokens** (`components.css`). Every colour is a `--kit-*` token declared on each component ROOT (a custom
+property holding `var()` resolves where it is declared, so a sub-panel with its own `--vscode-*` values is followed)
+and mapped onto a `--vscode-*` variable — light, dark and high contrast are VS Code's to set. Two mappings are not
+the obvious ones, measured against VS Code's resolved theme values: the ok tone reads `charts-green` (Light Modern's
+`testing-iconPassed` is below 3:1 on white), and warning / critical read the list colours first and fall back to
+`editorWarning` / `errorForeground`, because both high-contrast themes leave the list colours unset. Token names carry
+their contrast duty — `-fg` text 4.5:1, `-mark` indicators 3:1 — and `src/test/contrast.test.ts` derives its pairs
+from them. Sizes are `em`, so the ± text size scales everything. No `url()`, no `@import`, no `!important`.
+
+**The package surface.** `exports` has three entries: `"."` (unchanged, the host + page API), `"./components"`
+(`dist/components/index.js` + `.d.ts`) and `"./components.css"` (`dist/components/components.css`, copied there by
+`scripts/copy-css.mjs` in `npm run build`). `sideEffects` is `["*.css"]` — a stylesheet IS a side effect; esbuild 0.28 keeps a bare CSS import even under `false` (measured in K1's break-it, which therefore has no esbuild teeth), but a bundler that honours the field for CSS would drop it. The components entry's
+run-time closure stays inside `src/components/` (`architecture.test.ts`), so a browser bundle never meets
+`node:crypto`.
+
+**The Storybook** (`.storybook/`, `stories/`) shows one story per gallery case and a `Matrix` per component — every
+state × VS Code's four reference themes × three text sizes — plus the existing display controls and the Help viewer
+as they are (the Help viewer in an iframe, its script running under its own nonce with a stand-in
+`acquireVsCodeApi`). The theme values are `.storybook/vscode-themes.css`, resolved from VS Code's own theme files and
+colour registry at a pinned commit, each with its source; a variable VS Code leaves unset is absent there too. The
+cases are `src/test/gallery/`, the one list the Storybook, the axe check and the stylesheet check all read.
+`npm run build-storybook` writes `storybook-static/` (git-ignored); CI builds it on ubuntu.
+
+**Growth:** none persistent — a table holds the rows it was given and at most one revealed text per row; tabs hold
+their tabs.
+
 ## The release path — build, pack, consume (E3.S1)
 
 What a consumer receives is the TARBALL, not this working tree, so the tarball is what is checked before
@@ -314,10 +433,20 @@ flowchart LR
   installed -->|"tsc, node16, skipLibCheck false"| typed["typecheck against the installed .d.ts"]
   typed -->|"esbuild bundle, external vscode, cjs, node"| bundle["dist/extension.js + dist/helpCatalog.js"]
   bundle -->|"node run.mjs, vscode stub"| ran["help page, press, escapers, unhook"]
+  installed -->|"esbuild, platform browser, iife"| webview["dist/webview.js + dist/webview.css"]
+  webview -->|"node run-webview.mjs, only a document"| ranweb["tabs, a sort, a reveal by index, the token block"]
+  ranweb --> ok
   installed -->|"npm exec --no"| bin["vscode-webview-kit-help-digests over the bundled catalog"]
   ran --> ok(["exit 0"])
   bin --> ok
 ```
+
+Since K1 the steps also consume the components as a webview does: `contents` requires every file the `exports` map
+names (the components entry and `components.css` among them) and admits a non-`.js`/`.d.ts` file under `dist/` only
+when `exports` names it; `typecheck` also checks the fixture's `src/webview.ts` with the DOM library (the real
+`document` passed to the components with no cast); `bundle` also bundles that entry for `platform: 'browser'`,
+`format: 'iife'`, and requires the CSS esbuild emits beside it; `run` also runs that bundle in a `node:vm` with only a
+`document` (`run-webview.mjs`: the tabs rendered, a sort, a reveal telling the row index, the token block in the CSS).
 
 A failure stops the run at its step and names it (`FAILED at step "typecheck"`); `--broken-import` proves the
 typecheck is the step that catches a misspelled import, which esbuild alone bundles silently. The check runs
@@ -483,10 +612,16 @@ catalogue, and what the suite does not prove.
   `npm run pack-and-consume`; `--published` since E3.S2), `scripts/verify-published.mjs` (E3.S2), and
   `scripts/publish-once.mjs` (E3.S2) and `scripts/lib/npm.mjs` — how all three start npm (`node npm-cli.js`, `npm_*` removed, `registryEnv`: GitHub Packages and a `${NODE_AUTH_TOKEN}` reference).
   `package.json` scripts include `prepack: npm run build` (E3.S1). `release-please-config.json` and
-  `.release-please-manifest.json` (E3.S2).
+  `.release-please-manifest.json` (E3.S2). Since K1: `exports` adds `./components` and `./components.css`,
+  `sideEffects` is `["*.css"]`, `npm run build` ends with `scripts/copy-css.mjs` (every `.css` the `exports` map
+  names, copied from `src/` into `dist/`), `npm run typecheck` also checks `tsconfig.storybook.json` (the Storybook's
+  own code, with the DOM library, never emitted), and `storybook` / `build-storybook` run the Storybook. The
+  devDependencies gained `storybook`, `@storybook/html-vite`, `@storybook/addon-a11y` (10.6.0), `vite` (8.3.1),
+  `axe-core` (4.13.0, MPL-2.0, a test tool never bundled) and `jsdom` (30.1.1), each pinned exactly; `dependencies`
+  stays absent.
 - **CI:** `.github/workflows/ci.yml` runs the whole chain — conventions check, plan lifecycle, typecheck,
   lint, test, build, `npm pack --dry-run` — on `ubuntu-latest` AND `windows-latest`, every action pinned to a
-  commit SHA, and calls the reusable `pack-and-consume.yml` (E3.S1); `release-please.yml` and `release.yml`
+  commit SHA, calls the reusable `pack-and-consume.yml` (E3.S1), and builds the Storybook on ubuntu (K1); `release-please.yml` and `release.yml`
   (E3.S2, above), with `.github/scripts/release-guard.mjs`; `pr-title.yml` with its "documentation alone
   never opens a release" step (`.github/scripts/docs-only-title.mjs` over `.github/scripts/lib/resolved.mjs`,
   both from ConnectOtherAIs); `coderabbit-review.yml` + `.coderabbit.yaml`, `dependabot.yml`. A commit that
@@ -499,4 +634,4 @@ catalogue, and what the suite does not prove.
 | Repository | Uses | Since |
 |---|---|---|
 | `dew_flow_connect_other_ais` | the source of the extracted modules (`src_vs_code/src` at `1056aed9`); switches to the package in its own PR, adapting `vscode.workspace` and each panel to the ports (`ConfigurationPort`, `WebviewPort`, `HelpPanelPort` for the help panel) and passing its prompt listing as the help page's appendix | planned |
-| `wsl_care` | the help page and display controls of its extension | planned |
+| `wsl_care` | the help page and display controls of its extension; the webview components (`./components`, `./components.css`) for its full view — its E18.W0 bundles them into `media/full.js` + `media/full.css` and widens its page harness by the port's surface (`wsl_care · todo/PLAN_disk_health.md` §3.4) | planned |

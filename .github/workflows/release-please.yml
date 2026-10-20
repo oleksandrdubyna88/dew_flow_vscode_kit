@@ -5,7 +5,7 @@ name: release-please
 # commits since the last `v*` tag and opens (or updates) one pull request that bumps package.json and
 # writes CHANGELOG.md. A PERSON merging that pull request is the decision to release; the run the merge
 # triggers then cuts the tag `v<version>` and a published GitHub release, and that release starts
-# `release.yml`, which packs, consumes and publishes to npm (README "Release and rollback").
+# `release.yml`, which packs, consumes and publishes to GitHub Packages (README "Release and rollback").
 #
 # WHY A GITHUB APP TOKEN AND NOT `GITHUB_TOKEN`. From release-please's README: "all resources created by
 # release-please (release tag or release pull request) will not trigger future GitHub actions

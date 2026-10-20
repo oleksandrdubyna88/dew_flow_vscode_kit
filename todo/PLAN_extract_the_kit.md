@@ -371,6 +371,21 @@ commit are pull requests in those repositories.
 | 3 | E3.S2 | **Accepted.** `actions/setup-node` with `registry-url: https://registry.npmjs.org`; the publish step gets `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}` — npm reads that, not `NPM_TOKEN`. |
 | 6 | E3.S2 | **Accepted.** `id-token: write` and the npm secret live on the publish job alone, which runs only on `release: published` for a `v*` tag cut by release-please from `main`, never on `pull_request` (so never on a fork), behind a GitHub environment `npm` that holds `NPM_TOKEN`. The provenance identity (`oleksandrdubyna88/dew_flow_vscode_kit`, `release.yml`, environment `npm`) is written into README "Release and rollback"; once 0.1.0 exists, npm trusted publishing is bound to that same identity and the token is retired. |
 
+## 7a. The next plan, and its boundary with this one (2026-10-12)
+
+[PLAN_kit_components_storybook.md](PLAN_kit_components_storybook.md) (wsl_care's E18.K1) adds the webview
+components — `Tabs`, `DataTable`, `RecommendationCard`, theme tokens — behind a second entry,
+`./components`, with their stylesheet and a Storybook. This plan is the first step of that one's order.
+
+| Item | This plan (0.1.x) | PLAN_kit_components_storybook.md (0.2.0) |
+|---|---|---|
+| the help, display, settings, text and webview modules; the root entry `"."` | builds them; nothing in them changes | shows the display controls and the Help viewer in its Storybook as they are; adds nothing to the root entry |
+| the release pipeline (release-please, `release.yml`, `pack-and-consume`) | builds it | widens `pack-and-consume` to a browser bundle of `./components` + its CSS; changes nothing that publishes |
+| the order | first: 0.1.0, which never reached a registry, then 0.1.1 | second: K1, then 0.2.0 |
+| the first published version | **0.1.1**, on GitHub Packages, 2026-10-17 (0.1.0's publish to npmjs failed; it was never published) | 0.2.0, also on GitHub Packages: K1 is a plain `feat:` on top of 0.1.1, and its squash commit still carries `Release-As: 0.2.0` (that plan's §7, rewritten 2026-10-18) |
+
+Disjoint: neither plan builds what the other's column names.
+
 ## 8. Definition of Done
 
 **A — pipeline ready (epic 3):**

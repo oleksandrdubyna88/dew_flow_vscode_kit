@@ -1,6 +1,6 @@
 /*
  * @oleksandrdubyna88/vscode-webview-kit/components.css — the webview components' one stylesheet
- * (todo/PLAN_kit_components_storybook.md §4.8).
+ * (research/PLAN_kit_components_storybook.md §4.8).
  *
  * CLASSES ONLY. The components set no style attribute and the page needs no 'unsafe-inline': link this file with
  * the render's nonce (<link rel="stylesheet" nonce="..." href="...">) under a CSP of style-src 'nonce-...'. It

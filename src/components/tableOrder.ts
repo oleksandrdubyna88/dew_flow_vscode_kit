@@ -1,5 +1,5 @@
 /**
- * The DataTable's order and filter, as pure functions over values — no DOM (`todo/PLAN_kit_components_storybook.md`
+ * The DataTable's order and filter, as pure functions over values — no DOM (`research/PLAN_kit_components_storybook.md`
  * §4.6).
  *
  * <p><b>Absent is not zero</b> (`common.coding-style`): `null` is a value that could not be had. It sorts LAST in

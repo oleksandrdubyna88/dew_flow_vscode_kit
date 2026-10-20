@@ -82,7 +82,7 @@ jobs:
       contents: read
     uses: ./.github/workflows/pack-and-consume.yml
 
-  # The Storybook builds (E18.K1, todo/PLAN_kit_components_storybook.md §4.9): every story compiles and is indexed.
+  # The Storybook builds (E18.K1, research/PLAN_kit_components_storybook.md §4.9): every story compiles and is indexed.
   # Ubuntu only, and that is the whole mapping (common.platform-limits § 2): the Storybook is a development page, no
   # binary of it ships to any platform, and the code it shows — the components — runs its tests, axe and contrast
   # checks on BOTH legs of build-test above.
@@ -109,7 +109,7 @@ jobs:
       - name: Build the Storybook
         run: npm run build-storybook
 
-      # No table scrolls sideways (todo/PLAN_kit_components_storybook.md §4.6a): every DOM gallery case in real Chrome
+      # No table scrolls sideways (research/PLAN_kit_components_storybook.md §4.6a): every DOM gallery case in real Chrome
       # (on GitHub's ubuntu image), 300 / 1280 / 1920 px x four themes x three sizes, each also in an 18em box. jsdom has
       # no layout, so only a browser can say this. No browser would be a RED step, never a skip.
       - name: Layout check

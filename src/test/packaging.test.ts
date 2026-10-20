@@ -64,7 +64,7 @@ test('npm pack carries the bin script, the manifest, README and LICENSE, and oth
   assert.deepEqual(stray, [], 'files a publish would carry that nobody meant to ship');
 });
 
-// ---- the components entry and its stylesheet (todo/PLAN_kit_components_storybook.md §4.2) -------------------------
+// ---- the components entry and its stylesheet (research/PLAN_kit_components_storybook.md §4.2) -------------------------
 
 interface ExportsManifest {
   readonly exports: Readonly<Record<string, unknown>>;

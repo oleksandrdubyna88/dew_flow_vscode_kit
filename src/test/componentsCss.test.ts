@@ -6,7 +6,7 @@ import { COMPONENTS_CSS, containerBlocks, readCss, rules, tokenBlock, type Rule 
 import { GALLERY } from './gallery';
 
 /**
- * `components.css` against what the components actually render (`todo/PLAN_kit_components_storybook.md` §5.2, items
+ * `components.css` against what the components actually render (`research/PLAN_kit_components_storybook.md` §5.2, items
  * 16–17). The motivating defect of `common.generated-code-tests` was a class every colour rule is scoped under,
  * missing from one rendering — a string check could not see it. So the classes are DERIVED from the DOM every gallery
  * case renders, never listed, and checked both ways: every `kit-*` class rendered has a rule, and every `kit-*` class
@@ -85,7 +85,7 @@ test('every --kit-* theme token reads a --vscode-* variable first — light, dar
   assert.deepEqual(notMapped, []);
 });
 
-// ---- fit, never scroll (todo/PLAN_kit_components_storybook.md §4.6a, §5.2 item 26) -------------------------------
+// ---- fit, never scroll (research/PLAN_kit_components_storybook.md §4.6a, §5.2 item 26) -------------------------------
 
 /** The table width each `stack` value stacks below — the table's OWN width, read through the size container. */
 const STACK_BELOW: Readonly<Record<'narrow' | 'medium' | 'wide', string>> = { narrow: '(max-width: 30em)', medium: '(max-width: 40em)', wide: '(max-width: 60em)' };

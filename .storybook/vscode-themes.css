@@ -1,6 +1,6 @@
 /*
  * The --vscode-* values the kit's theme tokens read, for VS Code's four built-in reference themes — what a webview
- * receives in each (todo/PLAN_kit_components_storybook.md §5.4). Used twice: the Storybook paints its stories with
+ * receives in each (research/PLAN_kit_components_storybook.md §5.4). Used twice: the Storybook paints its stories with
  * them, and src/test/contrast.test.ts computes the tokens' contrast from them.
  *
  * RESOLVED, NOT RECALLED, from microsoft/vscode @ ac0e053d86439bc74274c21f68a88f78e4956271, as VS Code resolves a

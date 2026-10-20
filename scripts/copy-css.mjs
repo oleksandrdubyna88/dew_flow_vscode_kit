@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Copies the stylesheets the package ships from `src/` into `dist/`, beside the compiled modules that use them —
- * `tsc` copies only what it compiles (`todo/PLAN_kit_components_storybook.md` §4.2). Run by `npm run build` after
+ * `tsc` copies only what it compiles (`research/PLAN_kit_components_storybook.md` §4.2). Run by `npm run build` after
  * `tsc`, so `prepack` (and with it `npm pack` and `npm publish`) can never ship a `dist/` without its CSS.
  *
  *     node scripts/copy-css.mjs

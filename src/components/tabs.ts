@@ -3,7 +3,7 @@ import { attributes, children, element, type KitDocument, type KitElement, type 
 import { checkedMark, markElement, type StatusMark } from './status';
 
 /**
- * `Tabs` — the WAI-ARIA tabs pattern with automatic activation (`todo/PLAN_kit_components_storybook.md` §4.5).
+ * `Tabs` — the WAI-ARIA tabs pattern with automatic activation (`research/PLAN_kit_components_storybook.md` §4.5).
  *
  * <p>A `div role=tablist` of `button role=tab` elements, each with an id, `aria-controls` naming its panel,
  * `aria-selected`, and a roving `tabindex` — `0` on the selected tab, `-1` on the others, so Tab enters the list on

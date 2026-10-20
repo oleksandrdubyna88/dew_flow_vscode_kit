@@ -4,7 +4,7 @@ import { matchesQuery, present, SORT_DIRECTIONS, sortedIndexes, type CellValue, 
 
 /**
  * `DataTable` — sort by a header, search the shown text, reveal one row's hidden value on request
- * (`todo/PLAN_kit_components_storybook.md` §4.6).
+ * (`research/PLAN_kit_components_storybook.md` §4.6).
  *
  * <p><b>The consumer owns every value and every word.</b> A column's `value(row)` is what sorts; its `format` is
  * what shows — units, rounding, a date in the reader's zone — and the kit formats nothing itself but absence, which

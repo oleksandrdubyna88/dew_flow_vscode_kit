@@ -2,7 +2,7 @@ import type { KitDocument, KitElement, KitEvent } from '../../components/dom';
 
 /**
  * A document that WATCHES the elements a component builds, so a gallery case can do what a person does — press the
- * reveal button of row 2 — without a page to dispatch an event in (`todo/PLAN_kit_components_storybook.md` §4.9). The
+ * reveal button of row 2 — without a page to dispatch an event in (`research/PLAN_kit_components_storybook.md` §4.9). The
  * strict fake and a real browser both refuse to dispatch at an element that is not in a page, and a gallery case is
  * rendered BEFORE it is placed in one; the component's own click listener, recorded here as it is registered, is the
  * one thing that needs no page. Test code: it never ships.

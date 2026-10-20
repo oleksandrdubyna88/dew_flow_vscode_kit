@@ -7,7 +7,7 @@ import { STATUS_TONES, toneGlyph } from '../components/status';
 import { onEveryDocument, type Driver } from './domDrivers';
 
 /**
- * `RecommendationCard`, RUN on the strict fake and on jsdom (`todo/PLAN_kit_components_storybook.md` §5.2, items
+ * `RecommendationCard`, RUN on the strict fake and on jsdom (`research/PLAN_kit_components_storybook.md` §5.2, items
  * 14–15): the glyph and its word, the sentence, the consumer's ONE button placed as given, the evidence — and the
  * refusals.
  */

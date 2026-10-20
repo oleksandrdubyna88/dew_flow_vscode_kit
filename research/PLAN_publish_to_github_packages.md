@@ -15,7 +15,7 @@
 > to `https://npm.pkg.github.com` and to the repository owner's scope (code round); `repositoryUrl` became the one
 > `repositoryOwnerAndName` parser; the retry line of `publish-once.mjs` has no test. The hardening this plan's
 > report named (no dependency code beside the publish credentials) is
-> [PLAN_split_the_publish_job.md](../todo/PLAN_split_the_publish_job.md). Scope: `package.json`,
+> [PLAN_split_the_publish_job.md](PLAN_split_the_publish_job.md). Scope: `package.json`,
 > `.github/workflows/release.yml`, `scripts/verify-published.mjs`, `scripts/pack-and-consume.mjs`,
 > `scripts/lib/npm.mjs`, the release tests, README, POST_DEPLOY.md, the research docs, and the release section of
 > [PLAN_extract_the_kit.md](../todo/PLAN_extract_the_kit.md).

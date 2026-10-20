@@ -19,7 +19,7 @@ Extracted from ConnectOtherAIs on 2026-10-02; consumers: ConnectOtherAIs, wsl_ca
 reached a registry**: its release run failed at `npm publish` on npmjs (E403, run 38925094342), so the tag
 `v0.1.0` stays, unpublished. The next release, **0.1.1**, is the first publish — to GitHub Packages, with an
 artifact attestation ([research/PLAN_publish_to_github_packages.md](research/PLAN_publish_to_github_packages.md)).
-The components (`…/components`, in 0.2.0) are in [todo/PLAN_kit_components_storybook.md](todo/PLAN_kit_components_storybook.md).
+The components (`…/components`, in 0.2.0) are in [research/PLAN_kit_components_storybook.md](research/PLAN_kit_components_storybook.md).
 
 ## Use
 

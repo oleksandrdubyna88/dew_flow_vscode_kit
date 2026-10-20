@@ -8,7 +8,7 @@ import { jsdomDriver, jsdomWindow, type JsdomWindow } from './domDrivers';
 import { GALLERY, type GalleryCase } from './gallery';
 
 /**
- * axe-core over every gallery case, in jsdom, inside `npm test` (`todo/PLAN_kit_components_storybook.md` §4.10) — so it
+ * axe-core over every gallery case, in jsdom, inside `npm test` (`research/PLAN_kit_components_storybook.md` §4.10) — so it
  * runs on both CI legs and covers exactly the states the Storybook shows. The WCAG 2.x A/AA rules are asked for;
  * rules that need a rendering (colour contrast above all) come back "incomplete" in jsdom, which is why contrast is
  * `contrast.test.ts`'s job. A companion case with a known violation proves axe is alive in this harness.

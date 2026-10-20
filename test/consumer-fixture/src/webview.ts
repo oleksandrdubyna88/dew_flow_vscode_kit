@@ -1,5 +1,5 @@
 /**
- * The consumer's WEBVIEW entry (todo/PLAN_kit_components_storybook.md §5.2, item 24): what wsl_care's
+ * The consumer's WEBVIEW entry (research/PLAN_kit_components_storybook.md §5.2, item 24): what wsl_care's
  * `src/webview/fullView.ts` will be — the components and their stylesheet, imported from the INSTALLED package's
  * subpaths, bundled by esbuild for the browser. Type-checked with the DOM library (`tsconfig.webview.json`): the real
  * `document` is passed with no cast, and what the components return is the page's own `HTMLElement`.

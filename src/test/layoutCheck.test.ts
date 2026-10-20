@@ -11,7 +11,7 @@ import { GALLERY } from './gallery';
 import { listAt, mapAt, parseWorkflow } from './workflowYaml';
 
 /**
- * What the layout check stands on, without a browser (`todo/PLAN_kit_components_storybook.md` §4.6a, §5.2 items 27-28).
+ * What the layout check stands on, without a browser (`research/PLAN_kit_components_storybook.md` §4.6a, §5.2 items 27-28).
  * The check itself runs Chrome - `npm run layout-check`, and its companion `npm run layout-check -- --companion` - in
  * CI's storybook job; these tests hold what it needs to be worth running: the gallery has the cases that would break
  * it, CI really runs both modes, a missing browser is a failed run rather than a skip, and a wrong argument is a usage

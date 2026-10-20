@@ -91,7 +91,7 @@ test('the exported type names, read from src/index.ts, are exactly the 0.1.0 typ
   assert.deepEqual(sorted(types), sorted(TYPES));
 });
 
-// ---- the components entry, `./components` (todo/PLAN_kit_components_storybook.md §4.2) ----------------------------
+// ---- the components entry, `./components` (research/PLAN_kit_components_storybook.md §4.2) ----------------------------
 
 const COMPONENT_VALUES: readonly string[] = ['STATUS_TONES', 'createTabs', 'createDataTable', 'createRecommendationCard'];
 

@@ -3,7 +3,7 @@ import THEMES_CSS from '../.storybook/vscode-themes.css?raw';
 import { framed, GALLERY, galleryCase, GALLERY_NONCE, type GalleryCase } from '../src/test/gallery';
 
 /**
- * Turning a gallery case into what Storybook's HTML renderer shows (`todo/PLAN_kit_components_storybook.md` §4.9).
+ * Turning a gallery case into what Storybook's HTML renderer shows (`research/PLAN_kit_components_storybook.md` §4.9).
  * The cases themselves live in `src/test/gallery/` — the one list the Storybook, axe and the stylesheet check all
  * read. Story-only code: it may use `document` and an `iframe`, which the kit's components never do.
  */

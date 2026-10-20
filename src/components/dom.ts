@@ -1,5 +1,5 @@
 /**
- * The slice of the DOM the webview components touch — and nothing else (`todo/PLAN_kit_components_storybook.md`
+ * The slice of the DOM the webview components touch — and nothing else (`research/PLAN_kit_components_storybook.md`
  * §4.3).
  *
  * <p><b>Why a port and not the global `document`.</b> The kit compiles without the DOM library (`tsconfig.json`

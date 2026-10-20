@@ -1,6 +1,6 @@
 /**
  * `@oleksandrdubyna88/vscode-webview-kit/components` — the webview components, as of 0.2.0
- * (`todo/PLAN_kit_components_storybook.md`).
+ * (`research/PLAN_kit_components_storybook.md`).
  *
  * <p>A SEPARATE entry from the package root on purpose: these run INSIDE a webview, bundled by the consumer for the
  * browser, and the root entry re-exports the host's nonce, which imports `node:crypto`. Nothing reachable from this

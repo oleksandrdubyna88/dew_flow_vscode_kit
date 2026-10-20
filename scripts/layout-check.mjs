@@ -102,6 +102,9 @@ function launch(chrome) {
   rmSync(portFile, { force: true });
   const args = [
     '--headless=new', '--disable-gpu', '--hide-scrollbars', '--no-first-run', '--no-default-browser-check', '--allow-file-access-from-files',
+    // Linux only: GitHub's Ubuntu runner image restricts the unprivileged user namespaces Chrome's sandbox needs (AppArmor),
+    // so headless Chrome does not start there with its sandbox. Acceptable for THIS tool only: it renders nothing but the
+    // repository's own static page (its stylesheet, theme fixtures and gallery) from a throwaway profile, offline.
     ...(process.platform === 'linux' ? ['--no-sandbox'] : []),
     `--user-data-dir=${PROFILE}`, '--remote-debugging-port=0', 'about:blank',
   ];

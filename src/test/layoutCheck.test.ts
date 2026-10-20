@@ -127,7 +127,7 @@ test('an unknown argument is a usage error, exit 2, before any browser is looked
 const CLEANUP = pathToFileURL(path.join(ROOT, 'scripts', 'lib', 'cleanup.mjs')).href;
 
 function inChild(body: string): void {
-  const code = ['import assert from "node:assert/strict";', 'const { EnvironmentError, endpointOf, removeWithRetry, runThenRemove, spawnBrowser, startOrEnd, withTimeout } = await import(process.env.KIT_LIB);', body].join('\n');
+  const code = ['import assert from "node:assert/strict";', 'const { EnvironmentError, endpointOf, inlineStyle, removeWithRetry, runThenRemove, spawnBrowser, startOrEnd, withTimeout } = await import(process.env.KIT_LIB);', body].join('\n');
   const ran = spawnSync(process.execPath, ['--input-type=module', '-e', code], { encoding: 'utf8', timeout: 30_000, env: { ...process.env, KIT_LIB: CLEANUP, KIT_PORT_FILE: path.join(os.tmpdir(), 'kit-no-such-port-file') } });
   assert.equal(ran.error, undefined, `could not run: ${String(ran.error)}`);
   assert.equal(ran.status, 0, `${ran.stdout}${ran.stderr}`);
@@ -326,5 +326,25 @@ test('withTimeout: answers what the promise answered, rejects with an Environmen
     assert.equal(closed, 0);
     const failure = await withTimeout(new Promise(() => undefined), 30, 'the DevTools command Foo.bar', () => { closed += 1; }).then(() => assert.fail('answered'), (error) => error);
     assert.ok(failure instanceof EnvironmentError); assert.match(failure.message, /the DevTools command Foo\\.bar did not answer within 0\\.03 s/); assert.equal(closed, 1);
+  `);
+});
+
+test('withTimeout: an onTimeout that THROWS still ends the wait - it rejects at once with the timeout error (the hook\'s failure appended) - even when the wrapped promise never settles', () => {
+  inChild(`
+    const started = Date.now();
+    const failure = await withTimeout(new Promise(() => undefined), 30, 'the DevTools command Foo.bar', () => { throw new Error('the hook blew up'); }).then(() => assert.fail('answered'), (error) => error);
+    assert.ok(failure instanceof EnvironmentError, String(failure));
+    assert.match(failure.message, /the DevTools command Foo\\.bar did not answer within 0\\.03 s/);
+    assert.match(failure.message, /the hook blew up/);
+    assert.ok(Date.now() - started < 5000, 'the wait hung');
+  `);
+});
+
+test('a stylesheet that could close the style element ("</style", any case, any spacing after it) is refused with an Error naming it; plain CSS is wrapped as is', () => {
+  inChild(`
+    assert.equal(inlineStyle('.a { color: red; }'), '<style>.a { color: red; }</style>');
+    for (const bad of ['.a{}</style><script>alert(1)</script>', '.a{}</STYLE >', '.a{}</Style\\n>', 'x</style']) {
+      assert.throws(() => inlineStyle(bad), (error) => error instanceof Error && /<\\/style/.test(error.message) && /stylesheet/.test(error.message), bad);
+    }
   `);
 });

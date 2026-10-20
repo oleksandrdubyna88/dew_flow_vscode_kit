@@ -46,7 +46,9 @@ export interface DataTableReveal<Row> {
   /**
    * Told the row's index in `rows` and an opaque REQUEST id - nothing about the row - when a person asks to reveal it. The
    * consumer hands the request back with its answer (`reveal(index, text, request)`); the id is unique per click for the life
-   * of the table. A click on a button that is still waiting for its answer does nothing, so `onReveal` is told once.
+   * of the table. A click on a button that is still waiting for its answer does nothing, so `onReveal` is told once. If
+   * `onReveal` throws, the request is dropped, the button is back to its normal state (the row stays clickable) and the error
+   * is rethrown to the click.
    */
   readonly onReveal: (index: number, request: string) => void;
   /** The button's visible text; `Show` when absent. */
@@ -420,7 +422,7 @@ export function createDataTable<E extends KitElement<E>, Row>(doc: KitDocument<E
       const request = `${state.generation}:${state.requests}`;
       state.pending.set(index, request);
       markWaiting(state, spec, index);
-      spec.reveal?.onReveal(index, request);
+      tellConsumer(state, spec, index, request);
     }
   };
   // All or nothing: every row view is built FIRST - that is where a consumer's value() or format() can throw - and only then are
@@ -479,6 +481,37 @@ function view<E extends KitElement<E>, Row>(parts: Parts<E>, state: State<E, Row
       state.pending.clear();
     },
   };
+}
+
+/**
+ * Tells the consumer a row was asked for. If its `onReveal` throws, the request it never answered is dropped and the button is
+ * back to its normal state - the person can click again - and the consumer's own error is rethrown. (Only while that request is
+ * still the row's: a `setRows` made inside `onReveal` has already replaced the rows.)
+ */
+function tellConsumer<E extends KitElement<E>, Row>(state: State<E, Row>, spec: DataTableOptions<Row>, index: number, request: string): void {
+  try {
+    spec.reveal?.onReveal(index, request);
+  } catch (error) {
+    if (state.pending.get(index) === request) {
+      state.pending.delete(index);
+      markReady(state, spec, index);
+    }
+    throw error;
+  }
+}
+
+/** The button as it is before any press: its normal text and class. */
+function markReady<E extends KitElement<E>, Row>(state: State<E, Row>, spec: DataTableOptions<Row>, index: number): void {
+  const button = rowAt(state, index)?.revealButton;
+  if (button !== undefined) {
+    button.textContent = showLabel(spec.reveal);
+    button.className = BUTTON_CLASS;
+  }
+}
+
+/** What a button says before it is pressed: the consumer's `buttonText`, else the English default. */
+function showLabel<Row>(reveal: DataTableReveal<Row> | undefined): string {
+  return reveal?.buttonText ?? DEFAULT_SHOW;
 }
 
 /** The pressed button says it waits: the consumer's `waitingText`, and a class the stylesheet mutes. */

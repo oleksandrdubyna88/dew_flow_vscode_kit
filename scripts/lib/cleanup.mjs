@@ -117,6 +117,18 @@ export async function startOrEnd({ spawnChild, endpointOf: awaitEndpoint, end, w
 }
 
 /**
+ * A `<style>` element holding `css`. A stylesheet that could close the element early (`</style`, any case) would let a planted
+ * string write markup into the page, so it is refused with an Error naming it rather than escaped.
+ */
+export function inlineStyle(css) {
+  if (/<\/style/i.test(css)) {
+    throw new Error('the stylesheet contains "</style", which would close the style element it is placed in');
+  }
+
+  return `<style>${css}</style>`;
+}
+
+/**
  * Answers what `promise` answers, or rejects with an `EnvironmentError` saying that `what` did not answer within `ms`,
  * running `onTimeout` first (close the socket, so the caller's clean-up can run). The timer never outlives the promise.
  */
@@ -124,8 +136,14 @@ export function withTimeout(promise, ms, what, onTimeout = () => undefined) {
   let timer;
   const timedOut = new Promise((_ok, fail) => {
     timer = setTimeout(() => {
-      onTimeout();
-      fail(new EnvironmentError(`${what} did not answer within ${ms / 1000} s.`));
+      // A hook that throws must not keep the wait from ending: the timeout error is what is rejected, with the hook's failure appended.
+      let hook = '';
+      try {
+        onTimeout();
+      } catch (error) {
+        hook = ` (its clean-up hook also failed: ${error?.message ?? String(error)})`;
+      }
+      fail(new EnvironmentError(`${what} did not answer within ${ms / 1000} s.${hook}`));
     }, ms);
   });
 

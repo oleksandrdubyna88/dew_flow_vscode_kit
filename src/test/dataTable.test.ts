@@ -382,6 +382,36 @@ onEveryDocument(<E extends KitElement<E>>(make: () => Driver<E>, name: string) =
       assert.deepEqual(programs(root), ['node', 'claude', 'dotnet', 'Bash'], 'a keystroke filtered a disposed table');
     });
 
+    test('an onReveal that throws leaves the row clickable: its request is dropped (a reply with it answers false), the button is back to Show without the pending class, the error reaches the click, and a second click asks again', () => {
+      const driver = make();
+      const log: unknown[][] = [];
+      let calls = 0;
+      const reveal = { ...(options().reveal ?? assert.fail('no reveal')), onReveal: (...args: unknown[]) => { calls += 1; log.push(args); if (calls === 1) { throw new Error('the consumer broke'); } } };
+      const view = createDataTable(driver.doc, options({ reveal }));
+      const root = driver.attach(view.root);
+      const button = (): DomNode => root.one('tr[data-kit-row="1"]').one('button[data-kit-reveal]');
+      try {
+        driver.click(button());
+      } catch {
+        // the dispatch of a click may surface the consumer's error; the STATE is what is asserted
+      }
+      assert.equal(calls, 1, 'the click did not reach onReveal');
+      assert.equal(button().text, 'Show', 'the button kept saying it was waiting');
+      assert.ok(!button().classes.includes('kit-table__reveal--pending'), 'the pending class stayed on the button');
+      assert.equal(view.reveal(1, 'SECRET-claude', String(log[0]?.[1])), false, 'the request of a failed click was still pending');
+      assert.ok(!root.text.includes('SECRET'));
+      driver.click(button());
+      assert.equal(calls, 2, 'a second click did not ask again');
+      assert.equal(button().text, 'Waiting…');
+      assert.equal(view.reveal(1, 'SECRET-claude', String(log[1]?.[1])), true);
+    });
+
+    test('reveal.onReveal must be a function at construction: a TypeError naming it', () => {
+      const driver = make();
+      const reveal = { ...(options().reveal ?? assert.fail('no reveal')), onReveal: 'nope' as never };
+      assert.throws(() => createDataTable(driver.doc, options({ reveal })), (error: unknown) => error instanceof TypeError && /DataTable reveal\.onReveal must be a function, got/.test(error.message));
+    });
+
     test('filter(query) refuses a non-string naming the type; the search box still passes its string', () => {
       const driver = make();
       const view = createDataTable(driver.doc, options());

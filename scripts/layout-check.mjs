@@ -33,7 +33,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { build } from 'esbuild';
 
-import { EnvironmentError, endpointOf, removeWithRetry, runThenRemove, spawnBrowser, startOrEnd, withTimeout } from './lib/cleanup.mjs';
+import { EnvironmentError, endpointOf, inlineStyle, removeWithRetry, runThenRemove, spawnBrowser, startOrEnd, withTimeout } from './lib/cleanup.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PROFILE = join(ROOT, 'testsToDelete-layout-check');
@@ -233,7 +233,7 @@ async function bundle(outDir) {
 function pageHtml(componentsCss) {
   const styles = [componentsCss, readFileSync(THEMES_CSS, 'utf8'), readFileSync(FRAME_CSS, 'utf8')].join('\n');
 
-  return `<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><title>layout check</title><style>${styles}</style></head>\n<body class="vscode-dark kit-story-size-default"><script src="layout-page.js"></script></body></html>\n`;
+  return `<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><title>layout check</title>${inlineStyle(styles)}</head>\n<body class="vscode-dark kit-story-size-default"><script src="layout-page.js"></script></body></html>\n`;
 }
 
 /** Writes one page (the bundle beside it) using `css` as the components' stylesheet; answers its file URL. */
@@ -334,8 +334,13 @@ async function withBrowser(run) {
   let tools;
 
   return runThenRemove(async () => {
-    started = await launch(findChrome());
+    const chrome = findChrome();
+    console.log(`layout-check: Chrome ${chrome}`);
+    started = await launch(chrome);
+    console.log('layout-check: the browser started');
     tools = await Devtools.connect(started.endpoint);
+    console.log('layout-check: connected to the DevTools');
+    console.log('layout-check: opening the first page');
 
     return run(tools);
   }, { stop: () => shutDown(tools, started), remove: removeProfile, warn: warnNotCleaned });

@@ -679,3 +679,11 @@ concrete version in POST_DEPLOY's instruction (the stamp stays concrete).
 - **H4 (doc).** The `button(row)` text is in the page before any reveal: never the hidden value (d.ts and README).
 
 - **Hardening after the re-check (Fable: SHIP on 298fa8d).** `repaint` does nothing once the table is disposed, so a header sort click or a search keystroke after `dispose()` no longer calls the consumer's `countText` (red first on both documents: `a disposed table still called countText: actual 2, expected 0`; break-it: the guard removed). Doc clauses: a `countText` that throws does so AFTER `setRows` replaced the rows (only the status line is stale until the next repaint); a consumer that must clear revealed texts calls `setRows([])` before `dispose()`, or removes the root.
+
+**Code round 3, 2026-10-20 — five accepted fixes, as built.**
+
+- `withTimeout`: an `onTimeout` that throws no longer keeps the wait from ending - the timeout error is rejected (try/catch around the hook, its message appended). Red first: the throw escaped the timer and crashed the process. Break-it: the hook unguarded.
+- The page builder refuses a stylesheet containing `</style` (any case) with an Error naming it (`inlineStyle` in `scripts/lib/cleanup.mjs`, used by `pageHtml` in `scripts/layout-check.mjs` - the judge named `.storybook/layout-page.ts`, but the HTML is built in the script). Red first; break-it: the check removed.
+- `layout-check` prints start-up progress on stdout (the Chrome path, the browser started, connected to the DevTools, opening the first page); the verdict lines are unchanged. Not unit-tested (it needs Chrome); read in a real run.
+- A throwing `onReveal`: the request is dropped, the button is restored to its normal text and class, the consumer's error is rethrown, the person can click again. Red first on both documents (`the button kept saying it was waiting: actual 'Waiting…', expected 'Show'`); break-it: no restore.
+- `reveal.onReveal` must be a function at construction: ALREADY enforced (`callable(reveal.onReveal, ...)`), so the test passed at once; it now pins it, with a break-it.

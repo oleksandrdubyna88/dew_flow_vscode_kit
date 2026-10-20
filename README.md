@@ -291,7 +291,8 @@ const table = createDataTable(document, {
 // when the host answers: table.reveal(index, commandLine, request) -> true, with the request id it was told. A reply with no
 // request, another or an older one, one answered already, or one from before a setRows (even when the same row was clicked
 // again) changes nothing and answers false. While it waits the button says "Waiting…" (`waitingText` to change it); a click
-// on a waiting button does nothing, so onReveal is told once. The same goes for a reply for a row nobody asked about, a row
+// on a waiting button does nothing, so onReveal is told once; if onReveal throws, its request is dropped, the button is back to
+// "Show" (the row stays clickable) and your error is rethrown to the click. The same goes for a reply for a row nobody asked about, a row
 // that is gone because setRows shrank the rows (a late reply is never an error), and any reply after table.dispose().
 // A wrong ARGUMENT is a TypeError, though: no reveal column, an index that is not a whole number of 0 or more, a text or a
 // request that is not a string.

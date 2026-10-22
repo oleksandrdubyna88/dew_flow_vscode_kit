@@ -115,3 +115,31 @@ contrast (K1 §5.4 covers the tokens); anything about a page's behaviour (the co
 - [ ] No network and no file outside the page's folder reaches the page; only the bin's own Chrome is ever stopped.
 - [ ] Tarball and `pack-and-consume` prove the shipped bin runs; zero runtime dependencies.
 - [ ] Docs; plan and code rounds resolved; merged on all green; 0.3.0 published and verified by the release run.
+
+## 9. The gate's plan round (session `fe560e4a`, 2026-10-22)
+
+Two reviewers answered; `proceed` at 6 of 6. All seven findings accepted; they bind the build as much as §§ 1–6:
+
+1. **The no-network claim is narrowed and backed at the browser's own level.** The page is the consumer's OWN file from its own
+   repository (trusted input): the box stops accidental network use, it is not a sandbox for a hostile page. Besides the `Fetch`
+   interception, Chrome starts with a dead proxy (`--proxy-server=127.0.0.1:9`, `--proxy-bypass-list=<-loopback>`), WebRTC limited
+   to proxied UDP (`--force-webrtc-ip-handling-policy=disable_non_proxied_udp`) and `--disable-background-networking`; README and
+   § 7 say exactly that. RED 5 gains a planted `fetch()` and a planted `<img src="https://…">`.
+2. **File containment by real path.** A `file:` request is allowed only when `fs.realpathSync(fileURLToPath(url))` lies under
+   `fs.realpathSync(<page folder>)` (a symlink pointing outside is refused). RED 5 gains a symlink in the page folder pointing
+   outside it (skipped with its reason where the OS refuses to create one, never silently).
+3. **Deadlines and complete cleanup.** Browser start, the DevTools connection, each navigation and each probe call have their own
+   bound (constants, as today's `WAIT_MS` / `CONNECT_MS` / `COMMAND_MS`); a bound reached is exit 3 naming it. A page whose script
+   never yields is cut at the probe's bound. `SIGINT` / `SIGTERM` handlers and the `finally` stop the browser tree and remove the
+   profile. RED: a planted page with `while (true) {}` exits 3 within the bound and leaves no Chrome of this run and no profile.
+4. **URL canonicalisation is exact.** `fileURLToPath` + `path.resolve` + `realpathSync`; on Windows the comparison is
+   case-insensitive and drive-letter aware; percent-encoded names decode. RED: a page folder with a space and a non-ASCII
+   character in its name loads its own stylesheet and script with no false "asked for" defect.
+5. **The browser's whole tree is stopped, by its PID — never by image name.** Windows: `taskkill /PID <pid> /T /F`; POSIX: the
+   browser is spawned detached as its own process group and the group is signalled (`process.kill(-pid)`). Then the profile is
+   removed with retries. RED 3's run asserts no child of this run's Chrome is left.
+6. **Single line is judged on the text's line boxes.** For each matched element, a `Range` over its contents gives the client rects
+   of its text; the element is on one line when every rect's top lies within 2 px of the first. RED 4 gains a flex container
+   whose text wraps inside it (must fail) and an inline element with a badge child that does not wrap (must pass).
+7. **Rows are grouped by tolerance.** Elements share a row when their tops differ by at most 2 px (clustered in order), not by a
+   rounded top. RED 3 gains two cards at tops 100.49 and 100.51 px with different heights (must fail).

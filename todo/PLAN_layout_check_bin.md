@@ -1,6 +1,6 @@
 # PLAN — K2: the layout check ships as a bin, so a consumer checks its OWN page
 
-> Status: **plan only (2026-10-22)** — story **E18.K2** of wsl_care's epic E18 (`wsl_care · todo/PLAN_disk_health.md` §3.6 and
+> Status: **in progress (2026-10-23): built in part, draft PR #19 (WIP `fd83b35`; `scripts/pack-and-consume.mjs` unfinished, tests and the code round not run)** — story **E18.K2** of wsl_care's epic E18 (`wsl_care · todo/PLAN_disk_health.md` §3.6 and
 > `todo/PLAN_disk_health_E18.md` § W1b): the E18 plan says the layout check of K1 §4.6a "ships from the kit as a bin, else a small
 > kit story before W1b". 0.2.0 does not ship it (`package.json` `files` and `bin` name only the help digests), so this is that story.
 > Release: **0.3.0** (a `feat:`) through the kit's own release-please + split publish pipeline, approved under the same plan as

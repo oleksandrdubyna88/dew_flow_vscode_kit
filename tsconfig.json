@@ -23,5 +23,6 @@
     "skipLibCheck": true
   },
   "include": ["src"],
-  "exclude": ["node_modules", "out", "dist"]
+  // src/layout runs in a browser page and is checked by tsconfig.layout.json (it needs the DOM library this program leaves out).
+  "exclude": ["node_modules", "out", "dist", "src/layout"]
 }

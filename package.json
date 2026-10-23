@@ -28,10 +28,12 @@
   },
   "files": [
     "dist",
-    "scripts/help-digests.mjs"
+    "scripts/help-digests.mjs",
+    "scripts/layout"
   ],
   "bin": {
-    "vscode-webview-kit-help-digests": "scripts/help-digests.mjs"
+    "vscode-webview-kit-help-digests": "scripts/help-digests.mjs",
+    "vscode-webview-kit-layout-check": "scripts/layout/check.mjs"
   },
   "sideEffects": [
     "*.css"
@@ -40,10 +42,10 @@
     "node": ">=20"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.storybook.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.storybook.json && tsc --noEmit -p tsconfig.layout.json",
     "compile": "node scripts/clean.mjs out && tsc -p tsconfig.json",
     "test": "npm run compile && node scripts/run-tests.mjs",
-    "build": "node scripts/clean.mjs dist && tsc -p tsconfig.build.json && node scripts/copy-css.mjs",
+    "build": "node scripts/clean.mjs dist && tsc -p tsconfig.build.json && node scripts/copy-css.mjs && node scripts/build-layout.mjs",
     "prepack": "npm run build",
     "pack-and-consume": "node scripts/pack-and-consume.mjs",
     "lint": "eslint .",

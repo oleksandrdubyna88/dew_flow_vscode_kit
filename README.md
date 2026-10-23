@@ -361,6 +361,49 @@ copies of the stylesheet, must each turn it RED naming a DataTable case, and the
 after. CI runs both in the `storybook` job on ubuntu. The profile lives in the git-ignored `testsToDelete-layout-check/`,
 removed when the run ends.
 
+### Check your own page's layout
+
+The same machine ships as a bin, so an extension proves the two layout rules over ITS OWN page file — no table, box
+or page scrolls sideways, and cards side by side in one row have one height — in a real browser, at 300 / 1280 / 1920 px,
+in VS Code's four reference themes and three text sizes:
+
+```bash
+npx vscode-webview-kit-layout-check --page out/full-view.html \
+  --rows '.card' --single-line '.pid' --json layout-report.json
+```
+
+| Option | Meaning |
+|---|---|
+| `--page <file.html>` | A static page FILE (repeatable). It links its own stylesheets and scripts; the bin injects only the themes' resolved `--vscode-*` values and its probe. A directory, a missing file or a name not ending in `.html` is a usage error. |
+| `--rows <selector>` | Opt-in. The elements matching it that share a row (tops within 2 px of the row's first) must have one height (within 1 px); a defect names both heights. Cards on different rows may differ. |
+| `--single-line <selector>` | Opt-in. The text of each matching element must lie on ONE line: the client rects of its text nodes share a line when their tops are within 2 px of the line's first, or one's vertical centre falls inside the line (so a smaller badge, centred beside the text, is still the same line). A tall single line passes; a wrapping flex container fails. |
+| `--widths 300,1280,1920` | Window widths in px, 200–4000. |
+| `--themes dark,light,high-contrast,high-contrast-light` | Which theme classes the body gets. |
+| `--sizes small,default,large` | The editor font size: 11, 13 and 18 px (`--vscode-font-size` and the body's size). |
+| `--json <file>` | Also writes the report as JSON: `{ ok, pages, states, findings: [{ page, width, theme, size, group, where, problem }] }`. |
+
+Always checked, with no option: the page wider than the window, an element ending past its edge, a box whose content is
+wider than the box (a scroll bar, or text spilling out) and a table wider than what holds it. Every defect is one line,
+`FAIL <page> <width> <theme> <size> <what>`, and a script error in the page is a defect too.
+
+**Exit codes:** `0` pass · `1` a layout defect · `2` usage (nothing was started) · `3` the check could not run — no
+Chrome (`CHROME_PATH`, then the usual install paths; Edge on Windows as a fallback; a path that names nothing is an
+error, never a fallback), it would not start or answer, or a wait ran out its bound. A check that cannot run has not passed.
+
+**The browser is boxed in, to stop ACCIDENTAL reach — the page is your own file, trusted input, and this is not a
+sandbox for a hostile one.** Every request is paused through the DevTools `Fetch` domain and continues only when it is a
+`file:` URL whose REAL path (symlinks and junctions resolved) lies under the page's own folder, or a `data:` / `about:` URL;
+anything else is failed and reported as `the page asked for <url>`. Chrome also starts with a dead proxy that loopback
+does not bypass, WebRTC limited to proxied UDP and no background networking. The profile is a fresh folder under the OS
+temp folder (`testsToDelete-vscode-webview-kit-layout-check-…`, its path printed), removed when the run ends and on
+SIGINT / SIGTERM; only the browser the run started is stopped, as a TREE by its PID (`taskkill /PID <pid> /T /F` on
+Windows, the process group elsewhere), never by image name. Every wait is bounded (start 90 s, a command 60 s, a
+navigation 90 s, the probe 60 s): a page whose script never yields ends the run with exit 3 naming the wait.
+
+**What it does not prove:** that a real VS Code webview lays a page out like headless Chrome (the same engine family, not
+the same window), text metrics in a font the page does not ship, colour contrast (the kit's tokens are checked in its own
+tests), or anything about the page's behaviour. The kit's own gallery check (`npm run layout-check`) runs the same core.
+
 ## Develop
 
 See [.agents/PROJECT.md](.agents/PROJECT.md) for the commands and the rules this repository follows.

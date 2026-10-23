@@ -36,7 +36,8 @@ while the help panel — the host half that mints a nonce per render — must.
 | bin | `scripts/help-digests.mjs`, shipped as `vscode-webview-kit-help-digests` (`package.json` `bin` and `files`) | landed (E2.S2; shipped E2.S3) |
 | `components` (entry `./components`) | `dom.ts` (the DOM port: `KitDocument`, `KitElement`, the tag / attribute / event surface), `checks.ts` (the door's refusals), `status.ts` (`STATUS_TONES`, a mark = glyph + word), `tabs.ts` (`createTabs`), `tableOrder.ts` (sort and filter, pure), `dataTable.ts` (`createDataTable`), `recommendationCard.ts` (`createRecommendationCard`), `index.ts` (the entry), `components.css` (theme tokens and rules, shipped as `./components.css`) | landed (K1) |
 | Storybook | `.storybook/` (`main.ts`, `preview.ts` with the theme and size toolbars, `vscode-themes.css` — VS Code's resolved reference-theme values, `gallery.css`), `stories/*.stories.ts` over `src/test/gallery/` | landed (K1); a devDependency, never shipped |
-| layout check | `scripts/layout-check.mjs` (headless Chrome over the DevTools protocol), `.storybook/layout-page.ts` (the page it loads: the gallery's DOM cases twice, plus the overflow probe) | landed (K1, 4.6a); a development check, never shipped |
+| layout check — the shipped core | `scripts/layout/` (`check.mjs` the bin `vscode-webview-kit-layout-check`; `args.mjs`, `browser.mjs` finds / starts / stops Chrome as a tree, `devtools.mjs` the DevTools client over Node's `WebSocket`, `netbox.mjs` the request box, `core.mjs` the width × theme × size matrix, `report.mjs`, `deadlines.mjs`, `cleanup.mjs`), `src/layout/probe.ts` (the in-page probe, built by `scripts/build-layout.mjs` into `dist/layout/probe.js`; `dist/layout/vscode-themes.css` is `.storybook/vscode-themes.css` copied) | landed (K2): ships in the tarball with zero runtime dependencies — esbuild builds the probe at `npm run build`, the bin never calls it |
+| layout check — the gallery caller | `scripts/layout-check.mjs` (builds the gallery page in a temp folder and calls the core), `.storybook/layout-page.ts` (the page: the gallery's DOM cases twice, each in a `<section data-where>`) | landed (K1, 4.6a; on the shared core since K2); a development check, never shipped |
 
 ## The display module
 
@@ -375,14 +376,27 @@ row becomes a wrapped row of the sortable headers' buttons after a CSS-drawn `So
 sort; a header with no sort button is hidden there. `stack: 'never'` has no block: a table at every width. Hiding
 columns is deliberately not offered — it would hide data the consumer chose to show.
 
-`scripts/layout-check.mjs` proves it where it can be proved, in a browser: it bundles `.storybook/layout-page.ts` (esbuild,
-already a devDependency) for the browser, writes one static page with `components.css`, the theme fixture and the
-gallery frame CSS into a git-ignored `testsToDelete-layout-check/`, drives headless Chrome with Node's own `WebSocket`
-(`Emulation.setDeviceMetricsOverride` sets the viewport; `--window-size` cannot go under ~500 px), and at 300 / 1280 /
-1920 px × four themes × three sizes asks the page's probe about every DOM case rendered in the page and in an 18em box.
-The matrix is 26 cases × 2 × 36 = 1872 case-states in 36 page states. CI runs it and its `--companion` (two planted
-defects in COPIES of the stylesheet that must go RED naming a DataTable case) in the `storybook` job. `layoutCheck.test.ts`
-holds, without a browser, what the check needs: the gallery's breaking cases, CI's steps, and that no browser is exit 3.
+`scripts/layout-check.mjs` proves it where it can be proved, in a browser, and since K2 it is one CALLER of the shared core in
+`scripts/layout/` (the same core the shipped bin `vscode-webview-kit-layout-check` runs over a consumer's own page — one
+implementation). It bundles `.storybook/layout-page.ts` (esbuild, a devDependency) for the browser, writes one static page with
+`components.css` and the gallery frame CSS into a temp folder under the OS temp folder, and the core drives headless Chrome with
+Node's own `WebSocket` (`Emulation.setDeviceMetricsOverride` sets the viewport; `--window-size` cannot go under ~500 px), injects
+the theme sheet and the probe, and at 300 / 1280 / 1920 px × four themes × three sizes asks the probe about every DOM case
+rendered in the page and in an 18em box. The matrix is 26 cases × 2 × 36 = 1872 case-states in 36 page states. CI runs it and
+its `--companion` (two planted defects in COPIES of the stylesheet that must go RED naming a DataTable case) in the `storybook`
+job. `layoutCheck.test.ts` holds, without a browser, what the gallery check needs: the gallery's breaking cases, CI's steps, and
+that no browser is exit 3.
+
+**The layout bin (K2).** `vscode-webview-kit-layout-check --page <file.html> [--rows <sel>] [--single-line <sel>] …` checks a
+consumer's static page file(s) with the same four checks plus two opt-in ones (cards in a row have one height; a text on one
+line). The browser is boxed in: every request is paused through the DevTools `Fetch` domain and continues only for a `file:`
+URL whose REAL path lies under the page's real folder (or `data:` / `about:`); Chrome also starts with a dead proxy
+(loopback not bypassed), WebRTC limited to proxied UDP and no background networking. It is a box against accidental reach, not a
+sandbox for a hostile page — the page is the consumer's own file. Every wait has a bound (`deadlines.mjs`, lowerable through
+`KIT_LAYOUT_*_MS` for tests) and an expired one is exit 3 naming it; the browser is stopped as a TREE by its PID (never by image
+name) in a `finally` and on SIGINT / SIGTERM, and its profile (`testsToDelete-vscode-webview-kit-layout-check-<pid>-…` under the
+OS temp folder) is removed. `layoutBin.test.ts` runs the bin in a real Chrome over planted pages; `layoutCore.test.ts` holds the
+pieces that decide without a browser. Exit codes: 0 pass · 1 a defect · 2 usage · 3 cannot run.
 
 **The door.** Each component checks its options once (`checks.ts`) and refuses a mistake with a `TypeError` naming
 what, where and what would be accepted — an empty label, a repeated or malformed id or key, an unknown tone, a sort

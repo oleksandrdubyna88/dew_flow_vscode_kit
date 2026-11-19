@@ -119,12 +119,12 @@ test('an unknown argument is a usage error, exit 2, before any browser is looked
 });
 
 /**
- * `scripts/lib/cleanup.mjs` - what the check does AFTER the browser work: retry the removal of the profile folder a
+ * `scripts/layout/cleanup.mjs` - what the check does AFTER the browser work: retry the removal of the profile folder a
  * bounded number of times, and never let a failed removal replace the check's own result. An ES module outside the
  * TypeScript program, so each case runs its body in a `node --input-type=module` child with the library imported; a body
  * that throws is a failed case, and its message is what the test prints.
  */
-const CLEANUP = pathToFileURL(path.join(ROOT, 'scripts', 'lib', 'cleanup.mjs')).href;
+const CLEANUP = pathToFileURL(path.join(ROOT, 'scripts', 'layout', 'cleanup.mjs')).href;
 
 function inChild(body: string): void {
   const code = ['import assert from "node:assert/strict";', 'const { EnvironmentError, endpointOf, inlineStyle, removeWithRetry, runThenRemove, spawnBrowser, startOrEnd, withTimeout } = await import(process.env.KIT_LIB);', body].join('\n');

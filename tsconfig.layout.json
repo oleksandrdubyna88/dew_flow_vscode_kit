@@ -1,0 +1,14 @@
+{
+  // The layout probe — `src/layout/` — runs inside a browser page (`npm run build` bundles it into `dist/layout/probe.js`),
+  // so it needs the DOM library that `tsconfig.json` keeps out of the kit on purpose. A SEPARATE program, checked by
+  // `npm run typecheck` beside the main one and the Storybook's; nothing is emitted here: `scripts/build-layout.mjs` bundles it.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": [],
+    "noEmit": true
+  },
+  "include": ["src/layout"],
+  "exclude": ["node_modules", "out", "dist"]
+}

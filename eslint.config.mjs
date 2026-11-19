@@ -14,7 +14,8 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['out/**', 'dist/**', 'node_modules/**', '.agents/**', '.claude/hooks/**', 'storybook-static/**'],
+    // src/test/fixtures/layout: planted pages for the layout bin's tests - HTML and the scripts they load, not code of this package.
+    ignores: ['out/**', 'dist/**', 'node_modules/**', '.agents/**', '.claude/hooks/**', 'storybook-static/**', 'src/test/fixtures/layout/**'],
   },
   {
     // A disable that has stopped being needed is an exemption nobody granted.
@@ -52,6 +53,14 @@ export default tseslint.config(
       'max-lines': ['error', { max: 800, skipBlankLines: false, skipComments: false }],
       complexity: ['error', 4],
       'max-lines-per-function': ['error', 50],
+    },
+  },
+  {
+    // The layout probe runs in a browser page: its program is `tsconfig.layout.json` (DOM library), which the main
+    // program excludes, so the project service - which finds only `tsconfig.json` - cannot see it. Same rules as `src/**`.
+    files: ['src/layout/**/*.ts'],
+    languageOptions: {
+      parserOptions: { projectService: false, project: ['./tsconfig.layout.json'], tsconfigRootDir: import.meta.dirname },
     },
   },
   {

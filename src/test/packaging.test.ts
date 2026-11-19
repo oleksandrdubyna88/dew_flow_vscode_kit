@@ -22,6 +22,10 @@ const ROOT = path.resolve(__dirname, '..', '..');
 const OUT = path.resolve(__dirname, '..');
 const BIN_NAME = 'vscode-webview-kit-help-digests';
 const SCRIPT = 'scripts/help-digests.mjs';
+const LAYOUT_BIN_NAME = 'vscode-webview-kit-layout-check';
+const LAYOUT_SCRIPT = 'scripts/layout/check.mjs';
+/** What the layout bin needs at run time, besides its own scripts (`todo/PLAN_layout_check_bin.md` §3): built by `scripts/build-layout.mjs`. */
+const LAYOUT_DIST = ['dist/layout/probe.js', 'dist/layout/vscode-themes.css'];
 const FIXTURE = path.join(OUT, 'test', 'fixtures', 'helpDigestsCatalog.js');
 /** What a pack may carry besides `dist/`. */
 const ALWAYS_PACKED = ['package.json', 'README.md', 'LICENSE', SCRIPT];
@@ -48,20 +52,47 @@ function packedPaths(): string[] {
   return parsed[0]?.files.map((file) => file.path) ?? [];
 }
 
-test('the manifest ships the bin: named vscode-webview-kit-help-digests, pointing at the script, with dist and the script in files', () => {
+test('the manifest ships the bins: help-digests and the layout check, each pointing at its script, with dist and both scripts in files', () => {
   const { bin, files } = manifest();
 
-  assert.deepEqual(bin, { [BIN_NAME]: SCRIPT });
+  assert.deepEqual(bin, { [BIN_NAME]: SCRIPT, [LAYOUT_BIN_NAME]: LAYOUT_SCRIPT });
   assert.ok(files.includes('dist'), 'dist is not in files');
   assert.ok(files.includes(SCRIPT), `${SCRIPT} is not in files`);
+  assert.ok(files.includes('scripts/layout'), 'scripts/layout is not in files');
 });
 
-test('npm pack carries the bin script, the manifest, README and LICENSE, and otherwise only dist/', { timeout: 90_000 }, () => {
+test('npm pack carries the bin scripts, the manifest, README and LICENSE, and otherwise only dist/ and scripts/layout/', { timeout: 90_000 }, () => {
+  // The pack lists what is on disk; dist/layout is made by the build, which `npm test` does not run - the same way the stylesheet test below makes its own.
+  const built = spawnSync(process.execPath, [path.join(ROOT, 'scripts', 'build-layout.mjs')], { cwd: ROOT, encoding: 'utf8', timeout: 60_000 });
+  assert.equal(built.status, 0, `${built.stdout}${built.stderr}`);
   const paths = packedPaths();
 
   assert.ok(paths.includes(SCRIPT), `the pack does not carry ${SCRIPT}; it carries: ${paths.join(', ')}`);
-  const stray = paths.filter((p) => !ALWAYS_PACKED.includes(p) && !p.startsWith('dist/'));
+  for (const needed of [LAYOUT_SCRIPT, ...LAYOUT_DIST, ...layoutModules()]) {
+    assert.ok(paths.includes(needed), `the pack does not carry ${needed}; it carries: ${paths.join(', ')}`);
+  }
+  const stray = paths.filter((p) => !ALWAYS_PACKED.includes(p) && !p.startsWith('dist/') && !p.startsWith('scripts/layout/'));
   assert.deepEqual(stray, [], 'files a publish would carry that nobody meant to ship');
+});
+
+/** Every `scripts/layout/*.mjs`, as the pack names it. */
+function layoutModules(): string[] {
+  return fs.readdirSync(path.join(ROOT, 'scripts', 'layout')).filter((name) => name.endsWith('.mjs')).map((name) => `scripts/layout/${name}`);
+}
+
+test('the shipped layout core has no dependency: every import is a node: built-in or a sibling file', () => {
+  const imports = layoutModules().flatMap((file) => {
+    const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+
+    return [...text.matchAll(/\bfrom\s+['"]([^'"]+)['"]|\bimport\(\s*['"]([^'"]+)['"]/g)].map((match) => ({ file, from: match[1] ?? match[2] ?? '' }));
+  });
+
+  assert.ok(imports.length > 10, `the scan found ${imports.length} imports - the pattern is wrong`);
+  assert.deepEqual(imports.filter(({ from }) => !from.startsWith('node:') && !from.startsWith('./')), []);
+});
+
+test('the layout bin starts with a node shebang, as a bin must', () => {
+  assert.ok(fs.readFileSync(path.join(ROOT, LAYOUT_SCRIPT), 'utf8').startsWith('#!/usr/bin/env node\n'));
 });
 
 // ---- the components entry and its stylesheet (research/PLAN_kit_components_storybook.md §4.2) -------------------------

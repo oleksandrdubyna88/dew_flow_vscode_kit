@@ -1,5 +1,5 @@
 /**
- * What a script does around a browser it started, kept apart from `layout-check.mjs` so its decisions are testable
+ * What a script does around a browser it started, kept apart from the scripts that drive it so its decisions are testable
  * without a browser (`src/test/layoutCheck.test.ts`). The pieces that touch the outside world - the spawn, the pause, the
  * removal, the warning, ending a process - are handed in; the only I/O of its own is reading the DevTools port file.
  */
@@ -74,9 +74,11 @@ export async function endpointOf(child, { portFile, waitMs, pollMs = 100, read =
 /**
  * Starts the browser process through `spawnProcess` and watches it: `exited` settles when it exits OR when it could not be
  * started, and `record.error` keeps a spawn error (ENOENT, EACCES) instead of swallowing it, for `endpointOf`'s `startError`.
+ * `detached` starts it as the leader of its own process group (POSIX), so the whole tree can be signalled through the group;
+ * `env` is the environment it starts with.
  */
-export function spawnBrowser(spawnProcess, chrome, args) {
-  const child = spawnProcess(chrome, args, { stdio: 'ignore' });
+export function spawnBrowser(spawnProcess, chrome, args, { detached = false, env = undefined } = {}) {
+  const child = spawnProcess(chrome, args, { stdio: 'ignore', detached, ...(env === undefined ? {} : { env }) });
   const record = { error: undefined };
   const exited = new Promise((done) => {
     child.once('exit', done);

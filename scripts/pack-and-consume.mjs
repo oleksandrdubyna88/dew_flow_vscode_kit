@@ -81,6 +81,11 @@ function exported(value = MANIFEST.exports) {
   return Object.values(value ?? {}).flatMap((entry) => exported(entry));
 }
 const REQUIRED = [...new Set(exported())];
+/** What the layout bin injects into a page: built by `scripts/build-layout.mjs`, no `exports` entry (a bin's own files). */
+const LAYOUT_DIST = ['dist/layout/probe.js', 'dist/layout/vscode-themes.css'];
+const LAYOUT_BIN = 'vscode-webview-kit-layout-check';
+/** The shipped layout core: every `scripts/layout/*.mjs` of this checkout. */
+const LAYOUT_SCRIPTS = readdirSync(join(ROOT, 'scripts', 'layout')).filter((name) => name.endsWith('.mjs')).map((name) => `scripts/layout/${name}`);
 const FRESH = 'help-digests: every translation was made from the current English.';
 const MISSPELT = { from: 'createDisplayHost', to: 'createDisplayHots' };
 
@@ -175,7 +180,7 @@ function packStep(ctx) {
 
 function contentsStep(ctx) {
   const paths = tarballPaths(ctx.tarball);
-  const required = [...REQUIRED, ...Object.values(MANIFEST.bin ?? {})];
+  const required = [...REQUIRED, ...Object.values(MANIFEST.bin ?? {}), ...LAYOUT_DIST, ...LAYOUT_SCRIPTS];
   const missing = required.filter((path) => !paths.includes(path));
   if (missing.length > 0) {
     fail(`the tarball lacks ${missing.join(', ')} — did prepack build dist/? It carries: ${paths.join(', ')}`);
@@ -184,7 +189,7 @@ function contentsStep(ctx) {
   if (unexpected.length > 0) {
     fail(`the tarball carries files nobody meant to ship: ${unexpected.join(', ')}`);
   }
-  const strayDist = paths.filter((path) => path.startsWith('dist/') && !path.endsWith('.js') && !path.endsWith('.d.ts') && !REQUIRED.includes(path));
+  const strayDist = paths.filter((path) => path.startsWith('dist/') && !path.endsWith('.js') && !path.endsWith('.d.ts') && !REQUIRED.includes(path) && !LAYOUT_DIST.includes(path));
   if (strayDist.length > 0) {
     fail(`dist/ in the tarball holds more than .js, .d.ts and the files exports names: ${strayDist.join(', ')}`);
   }
@@ -296,6 +301,31 @@ function binStep(ctx) {
   return `${name} through npm exec and as an executable .bin link`;
 }
 
+/** The installed layout bin through npm's shim over one of the fixture's pages, at one width and one theme: its exit and its output. */
+function layoutRun(ctx, page) {
+  const args = [npmCli(), 'exec', '--no', '--offline', '--', LAYOUT_BIN, '--page', join('layout', page), '--widths', '300', '--themes', 'dark', '--sizes', 'default'];
+  const ran = spawnSync(process.execPath, args, { cwd: ctx.consumer, env: childEnv(), encoding: 'utf8', timeout: CHILD_TIMEOUT_MS });
+  if (ran.error !== undefined) {
+    fail(`npm exec ${LAYOUT_BIN} ${page} did not run: ${ran.error.message}`);
+  }
+
+  return { status: ran.status, said: `${ran.stdout}${ran.stderr}` };
+}
+
+/** The layout bin, consumed: a page that fits is exit 0, a page wider than the window is exit 1 naming it (a real Chrome, so a missing one FAILS this step). */
+function layoutStep(ctx) {
+  const fits = layoutRun(ctx, 'fits.html');
+  if (fits.status !== 0) {
+    fail(`${LAYOUT_BIN} over a page that fits exited ${fits.status} (0 expected)\n${tail(fits.said)}`);
+  }
+  const wide = layoutRun(ctx, 'wide.html');
+  if (wide.status !== 1 || !wide.said.includes('the page scrolls sideways')) {
+    fail(`${LAYOUT_BIN} over a page wider than the window exited ${wide.status} (1, naming "the page scrolls sideways", expected)\n${tail(wide.said)}`);
+  }
+
+  return `${LAYOUT_BIN} through npm exec: a page that fits passes, a page wider than the window is exit 1`;
+}
+
 function steps(brokenImport) {
   return [
     { name: 'pack', run: packStep },
@@ -306,6 +336,7 @@ function steps(brokenImport) {
     { name: 'bundle', run: bundleStep },
     { name: 'run', run: runStep },
     { name: 'bin', run: binStep },
+    { name: 'layout', run: layoutStep },
   ];
 }
 
